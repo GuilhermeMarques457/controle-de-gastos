@@ -29,6 +29,11 @@ Cada valor preenchido na matriz mensal vira um lançamento no primeiro dia daque
 
 No formulário, as categorias sugeridas acompanham o tipo selecionado: despesas mostram categorias de despesa e receitas mostram categorias de entrada. Categorias importadas ou personalizadas aparecem no tipo em que foram usadas.
 
+## Recursos
+
+- Use **Esconder valores** acima do resumo para ocultar os valores financeiros na tela.
+- No cadastro de uma movimentação, marque **Repetir todo mês, no dia 1** para criar os lançamentos dos meses seguintes automaticamente. O app completa meses em falta ao abrir e evita duplicar lançamentos. A data final é opcional; sem ela, a recorrência continua até ser desativada ou o lançamento recorrente ser excluído.
+
 ## Arquivos
 
 - `index.html` — estrutura da página

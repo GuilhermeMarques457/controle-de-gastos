@@ -92,6 +92,7 @@
             <button id="next-month" aria-label="Próximo mês">›</button>
           </div>
         </section>
+        <div class="summary-tools"><button class="privacy-toggle" id="privacy-toggle" type="button" aria-pressed="false" aria-label="Esconder valores" title="Esconder valores"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span>Esconder valores</span></button></div>
         <section class="summary-grid" aria-label="Resumo financeiro">
           <article class="summary-card balance-card">
             <div class="card-top">
@@ -322,6 +323,8 @@
               maxlength="140"
               placeholder="Algum detalhe que queira lembrar?"
           /></label>
+          <label class="recurring-toggle"><input id="entry-recurring" type="checkbox" /><span>Repetir todo mês, no dia 1</span></label>
+          <label class="field-label recurring-end-field" id="recurring-end-field" hidden>Repetir até <span class="optional">opcional</span><input id="entry-recurring-until" type="date" /></label>
           <div class="modal-actions">
             <button
               class="secondary-button"

@@ -129,12 +129,38 @@
         toast("Não foi possível buscar os dados do JSONBin.");
       }
     }
+    if (generateRecurringEntries()) {
+      alignInitialMonth();
+      await saveRecurringEntries();
+    }
     render();
     bind();
     updateSyncLabel();
   }
   function mergeCategories(items) {
     return [...new Set([...DEFAULT_CATEGORIES, ...items].filter(Boolean))];
+  }
+  function generateRecurringEntries() {
+    const today = new Date(), currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    let changed = false;
+    state.entries.filter((entry) => entry.recurring && entry.date).forEach((source) => {
+      const rootId = source.recurrenceId || source.id, start = source.date.slice(0, 7), lastMonth = source.recurringUntil?.slice(0, 7) || currentMonth;
+      const existing = new Set(state.entries.filter((item) => item.recurrenceId === rootId).map((item) => item.recurrenceMonth || item.date?.slice(0, 7)));
+      let [year, month] = start.split("-").map(Number); month++;
+      while (`${year}-${String(month).padStart(2, "0")}` <= currentMonth && `${year}-${String(month).padStart(2, "0")}` <= lastMonth) {
+        const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+        if (!existing.has(monthKey)) { state.entries.push({ ...source, id: uid(), date: `${monthKey}-01`, recurring: false, recurrenceId: rootId, recurrenceMonth: monthKey }); existing.add(monthKey); changed = true; }
+        if (++month > 12) { month = 1; year++; }
+      }
+    });
+    return changed;
+  }
+  async function saveRecurringEntries() {
+    persistLocal();
+    if (state.settings.binId && state.settings.key) {
+      try { await binRequest("PUT", { entries: state.entries, categories: state.categories, updatedAt: new Date().toISOString() }); }
+      catch { updateSyncLabel("Salvo neste dispositivo"); }
+    }
   }
   function alignInitialMonth() {
     const latest = state.entries.reduce(
@@ -465,6 +491,9 @@
     form.reset();
     $("#entry-id").value = "";
     $("#entry-date").value = new Date().toISOString().slice(0, 10);
+    $("#entry-recurring").checked = false;
+    $("#entry-recurring-until").value = "";
+    $("#recurring-end-field").hidden = true;
     $('input[name="type"][value="expense"]').checked = true;
     renderCategories("Outros");
     $("#modal-title").textContent = "Nova movimentação";
@@ -478,6 +507,9 @@
     $("#entry-amount").value = entry.amount;
     $("#entry-date").value = entry.date;
     $("#entry-note").value = entry.note || "";
+    $("#entry-recurring").checked = Boolean(entry.recurring);
+    $("#entry-recurring-until").value = entry.recurringUntil || "";
+    $("#recurring-end-field").hidden = !entry.recurring;
     document.querySelector(
       `input[name="type"][value="${entry.type}"]`,
     ).checked = true;
@@ -491,6 +523,17 @@
   function bind() {
     bindSectionNavigation();
     $("#new-entry").addEventListener("click", prepareNew);
+    $("#privacy-toggle").addEventListener("click", () => {
+      const hidden = document.body.classList.toggle("values-hidden"), button = $("#privacy-toggle");
+      button.setAttribute("aria-pressed", String(hidden));
+      button.setAttribute("aria-label", hidden ? "Mostrar valores" : "Esconder valores");
+      button.title = hidden ? "Mostrar valores" : "Esconder valores";
+      button.querySelector("span").textContent = hidden ? "Mostrar valores" : "Esconder valores";
+    });
+    $("#entry-recurring").addEventListener("change", (event) => {
+      $("#recurring-end-field").hidden = !event.target.checked;
+      if (event.target.checked) $("#entry-date").value = `${$("#entry-date").value.slice(0, 7)}-01`;
+    });
     $("#empty-add").addEventListener("click", prepareNew);
     $("#prev-month").addEventListener("click", () => shiftMonth(-1));
     $("#next-month").addEventListener("click", () => shiftMonth(1));
@@ -519,7 +562,16 @@
         date: $("#entry-date").value,
         category,
         note: $("#entry-note").value.trim(),
+        recurring: $("#entry-recurring").checked,
+        recurringUntil: $("#entry-recurring").checked ? $("#entry-recurring-until").value : "",
       };
+      if (entry.recurring && entry.recurringUntil && entry.recurringUntil < entry.date) { toast("A data final deve ser igual ou posterior à data do lançamento."); return; }
+      if (entry.recurring) entry.recurrenceId = id || entry.id;
+      else if (id) {
+        const previous = state.entries.find((item) => item.id === id);
+        if (previous?.recurrenceId) entry.recurrenceId = previous.recurrenceId;
+        if (previous?.recurrenceMonth) entry.recurrenceMonth = previous.recurrenceMonth;
+      }
       if (id)
         state.entries = state.entries.map((e) => (e.id === id ? entry : e));
       else state.entries.push(entry);

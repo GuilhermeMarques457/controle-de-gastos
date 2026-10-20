@@ -308,6 +308,32 @@ h1 span {
   border-radius: 12px;
   box-shadow: 0 3px 15px #203c2710;
 }
+.summary-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin: -12px 0 10px;
+}
+.privacy-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid #dce5dc;
+  border-radius: 9px;
+  background: #fff;
+  color: #426652;
+  font: 600 13px "DM Sans", sans-serif;
+  cursor: pointer;
+}
+.privacy-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.values-hidden .metric,
+.values-hidden #category-total,
+.values-hidden .category-item b,
+.values-hidden td.amount-cell {
+  filter: blur(8px);
+  user-select: none;
+}
+.values-hidden .charts-grid { filter: blur(7px); }
 .summary-card {
   min-height: 122px;
   padding: 16px 18px;
@@ -833,6 +859,17 @@ th:last-child {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+.recurring-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 14px;
+  color: #364b3d;
+  font-size: 14px;
+  font-weight: 600;
+}
+.recurring-toggle input { width: 18px; height: 18px; accent-color: #246c51; }
+.recurring-end-field[hidden] { display: none; }
 .optional {
   font-size: 9px;
   color: #9da69f;
