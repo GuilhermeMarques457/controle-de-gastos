@@ -12,7 +12,10 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+      defer
+    ></script>
     <script
       src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
       defer
@@ -69,7 +72,13 @@
               aria-label="Importar CSV ou PDF"
             >
               ⇧</button
-            ><button class="icon-button mobile-settings-button" id="open-settings-mobile" title="Configurações" aria-label="Configurações">⚙</button
+            ><button
+              class="icon-button mobile-settings-button"
+              id="open-settings-mobile"
+              title="Configurações"
+              aria-label="Configurações"
+            >
+              ⚙</button
             ><button class="primary-button" id="new-entry">
               <span>＋</span> Nova movimentação
             </button>
@@ -94,7 +103,21 @@
             <button id="next-month" aria-label="Próximo mês">›</button>
           </div>
         </section>
-        <div class="summary-tools"><button class="privacy-toggle" id="privacy-toggle" type="button" aria-pressed="false" aria-label="Esconder valores" title="Esconder valores"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span>Esconder valores</span></button></div>
+        <div class="summary-tools">
+          <button
+            class="privacy-toggle"
+            id="privacy-toggle"
+            type="button"
+            aria-pressed="false"
+            aria-label="Esconder valores"
+            title="Esconder valores"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+              <circle cx="12" cy="12" r="3" /></svg
+            ><span>Esconder valores</span>
+          </button>
+        </div>
         <section class="summary-grid" aria-label="Resumo financeiro">
           <article class="summary-card balance-card">
             <div class="card-top">
@@ -254,7 +277,12 @@
       </main>
     </div>
 
-    <input id="csv-file" type="file" accept=".csv,.pdf,text/csv,application/pdf" hidden />
+    <input
+      id="csv-file"
+      type="file"
+      accept=".csv,.pdf,text/csv,application/pdf"
+      hidden
+    />
     <div class="modal-backdrop" id="entry-modal" aria-hidden="true">
       <section
         class="modal"
@@ -325,8 +353,18 @@
               maxlength="140"
               placeholder="Algum detalhe que queira lembrar?"
           /></label>
-          <label class="recurring-toggle"><input id="entry-recurring" type="checkbox" /><span>Repetir todo mês, no dia 1</span></label>
-          <label class="field-label recurring-end-field" id="recurring-end-field" hidden>Repetir até <span class="optional">opcional</span><input id="entry-recurring-until" type="date" /></label>
+          <label class="recurring-toggle"
+            ><input id="entry-recurring" type="checkbox" /><span
+              >Repetir todo mês, no dia 1</span
+            ></label
+          >
+          <label
+            class="field-label recurring-end-field"
+            id="recurring-end-field"
+            hidden
+            >Repetir até <span class="optional">opcional</span
+            ><input id="entry-recurring-until" type="date"
+          /></label>
           <div class="modal-actions">
             <button
               class="secondary-button"
@@ -367,6 +405,10 @@
           JSONBin, informe o ID do bin e sua chave de acesso. As credenciais
           ficam apenas neste navegador.
         </p>
+        <p class="settings-copy">
+          Atualizar substitui os dados deste dispositivo pela versão mais
+          recente do JSONBin. Sua chave e o ID do bin serão mantidos.
+        </p>
         <label class="field-label"
           >Bin ID<input id="bin-id" placeholder="ID do seu JSONBin" /></label
         ><label class="field-label"
@@ -376,6 +418,13 @@
             placeholder="$2a$10$…"
         /></label>
         <div class="settings-status" id="settings-status"></div>
+        <button
+          class="secondary-button refresh-data-button"
+          id="refresh-data"
+          type="button"
+        >
+          ↻ Atualizar dados
+        </button>
         <div class="modal-actions">
           <button class="secondary-button" id="disconnect-bin" type="button">
             Usar só neste dispositivo</button

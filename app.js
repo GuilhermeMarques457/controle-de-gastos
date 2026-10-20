@@ -44,10 +44,9 @@
       .replace(/[\u0300-\u036f]/g, "")
       .trim()
       .toLocaleLowerCase("pt-BR");
-  const retiredCategoryNames = new Set([
-    ...RETIRED_CATEGORIES,
-    "Gazolina",
-  ].map(normalizeCategory));
+  const retiredCategoryNames = new Set(
+    [...RETIRED_CATEGORIES, "Gazolina"].map(normalizeCategory),
+  );
   const isRetiredCategory = (category) =>
     retiredCategoryNames.has(normalizeCategory(category));
   const DEFAULT_CATEGORIES = [...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES];
@@ -274,6 +273,7 @@
     const url = `https://api.jsonbin.io/v3/b/${encodeURIComponent(binId)}${method === "GET" ? "/latest" : ""}`;
     const response = await fetch(url, {
       method,
+      ...(method === "GET" ? { cache: "no-store" } : {}),
       headers: {
         "Content-Type": "application/json",
         "X-Master-Key": key,
@@ -522,7 +522,9 @@
       selected && isRetiredCategory(selected) && $("#entry-id").value
         ? [selected]
         : [];
-    const available = [...new Set([...defaults, ...used, ...preservedSelection])];
+    const available = [
+      ...new Set([...defaults, ...used, ...preservedSelection]),
+    ];
     select.innerHTML = available
       .map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`)
       .join("");
@@ -708,6 +710,7 @@
       $("#open-settings").click(),
     );
     $("#save-settings").addEventListener("click", connectBin);
+    $("#refresh-data").addEventListener("click", refreshFromBin);
     $("#disconnect-bin").addEventListener("click", () => {
       state.settings = {};
       localStorage.removeItem(SETTINGS_KEY);
@@ -821,6 +824,48 @@
       status.textContent =
         "Não foi possível conectar. Confira o Bin ID e a X-Master-Key.";
       status.className = "settings-status error";
+    }
+  }
+  async function refreshFromBin() {
+    const button = $("#refresh-data"),
+      status = $("#settings-status");
+    if (!state.settings.binId || !state.settings.key) {
+      status.textContent = "Conecte o JSONBin antes de atualizar os dados.";
+      status.className = "settings-status error";
+      return;
+    }
+    button.disabled = true;
+    button.textContent = "Atualizando…";
+    status.textContent = "Buscando a versão mais recente do JSONBin…";
+    status.className = "settings-status";
+    // Remove só os dados locais. As credenciais do JSONBin ficam intactas.
+    localStorage.removeItem(STORAGE_KEY);
+    state.entries = [];
+    state.categories = [...DEFAULT_CATEGORIES];
+    try {
+      const response = await binRequest("GET"),
+        data = response.record || response;
+      if (!Array.isArray(data.entries))
+        throw Error("O JSONBin não contém uma lista de lançamentos válida.");
+      state.entries = data.entries;
+      state.categories = mergeCategories(data.categories || []);
+      alignInitialMonth();
+      if (generateRecurringEntries()) await saveRecurringEntries();
+      else persistLocal();
+      render();
+      updateSyncLabel("Sincronizado com JSONBin");
+      status.textContent = "Dados atualizados do JSONBin neste dispositivo.";
+      status.className = "settings-status success";
+      toast("Dados atualizados do JSONBin.");
+    } catch {
+      render();
+      updateSyncLabel("Falha ao atualizar");
+      status.textContent =
+        "Não foi possível atualizar. Os dados locais foram limpos; confira sua conexão e tente novamente.";
+      status.className = "settings-status error";
+    } finally {
+      button.disabled = false;
+      button.textContent = "↻ Atualizar dados";
     }
   }
   function parseCSV(text) {
@@ -976,7 +1021,9 @@
             (entry.externalOperations || []).map((operation) => operation.id),
           ),
         );
-        const parsedInterest = entries.find((entry) => entry.externalOperations?.length);
+        const parsedInterest = entries.find(
+          (entry) => entry.externalOperations?.length,
+        );
         const previousInterestEntries = importedInterestIds.size
           ? state.entries.filter(
               (entry) =>
@@ -989,7 +1036,8 @@
                   !entry.externalId &&
                   entry.note === "Importado de extrato PDF" &&
                   entry.type === "income" &&
-                  entry.date?.slice(0, 7) === parsedInterest.date?.slice(0, 7) &&
+                  entry.date?.slice(0, 7) ===
+                    parsedInterest.date?.slice(0, 7) &&
                   (/^rendimento(?:s)?$/i.test(entry.description || "") ||
                     /rendimentos?/i.test(entry.description || "") ||
                     parsedInterest.externalOperations.some(
@@ -1025,7 +1073,9 @@
           ];
           parsedInterest.id = previousAggregate?.id || parsedInterest.id;
           parsedInterest.category =
-            previousAggregate?.category || mostUsedCategory || parsedInterest.category;
+            previousAggregate?.category ||
+            mostUsedCategory ||
+            parsedInterest.category;
           if (
             previousAggregate &&
             previousAggregate.description !== "Rendimento"
@@ -1067,7 +1117,8 @@
                       Number(Number(entry.amount).toFixed(2)),
                 )
               : null);
-          if (!parsed || entry.note !== "Importado de extrato PDF") return entry;
+          if (!parsed || entry.note !== "Importado de extrato PDF")
+            return entry;
           if (parsed.externalId) {
             recoveredOperationIds.add(parsed.externalId);
           }
@@ -1199,11 +1250,15 @@
         ...parseBankStatementText(pageText, extractPdfDescriptions(lines)),
       );
     }
-    const earnings = transactions.filter((entry) => entry.externalOperations?.length);
+    const earnings = transactions.filter(
+      (entry) => entry.externalOperations?.length,
+    );
     if (earnings.length > 1) {
       const operations = [
         ...new Map(
-          earnings.flatMap((entry) => entry.externalOperations).map((operation) => [operation.id, operation]),
+          earnings
+            .flatMap((entry) => entry.externalOperations)
+            .map((operation) => [operation.id, operation]),
         ).values(),
       ];
       const firstEarningIndex = transactions.indexOf(earnings[0]);
@@ -1215,7 +1270,9 @@
         id: uid(),
         externalOperations: operations,
         amount: Number(
-          operations.reduce((sum, operation) => sum + operation.amount, 0).toFixed(2),
+          operations
+            .reduce((sum, operation) => sum + operation.amount, 0)
+            .toFixed(2),
         ),
       });
     }
@@ -1225,7 +1282,10 @@
     const descriptions = new Map();
     const orderedLines = [...lines.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([y, items]) => ({ y, items: [...items].sort((a, b) => a.x - b.x) }));
+      .map(([y, items]) => ({
+        y,
+        items: [...items].sort((a, b) => a.x - b.x),
+      }));
     const dateRows = [];
     const operations = [];
     for (const line of orderedLines)
@@ -1238,20 +1298,28 @@
         }
       }
     const nearestDateRow = (y) =>
-      dateRows.reduce((nearest, candidate) =>
-        nearest === null || Math.abs(candidate - y) < Math.abs(nearest - y)
-          ? candidate
-          : nearest,
-      null);
+      dateRows.reduce(
+        (nearest, candidate) =>
+          nearest === null || Math.abs(candidate - y) < Math.abs(nearest - y)
+            ? candidate
+            : nearest,
+        null,
+      );
     const descriptionsByDate = new Map();
     for (const line of orderedLines) {
       for (const item of line.items) {
-        if (item.x < 70 || item.x >= 197 || /^descri[cç][aã]o$/i.test(item.text))
+        if (
+          item.x < 70 ||
+          item.x >= 197 ||
+          /^descri[cç][aã]o$/i.test(item.text)
+        )
           continue;
         const dateY = nearestDateRow(line.y);
         if (dateY === null || Math.abs(dateY - line.y) > 18) continue;
         if (!descriptionsByDate.has(dateY)) descriptionsByDate.set(dateY, []);
-        descriptionsByDate.get(dateY).push({ y: line.y, x: item.x, text: item.text });
+        descriptionsByDate
+          .get(dateY)
+          .push({ y: line.y, x: item.x, text: item.text });
       }
     }
     for (const operation of operations) {
