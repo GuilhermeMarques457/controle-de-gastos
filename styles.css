@@ -202,6 +202,9 @@ body {
   font-size: 18px;
   cursor: pointer;
 }
+.mobile-settings-button {
+  display: none;
+}
 .primary-button,
 .secondary-button {
   border: 0;
@@ -322,10 +325,18 @@ h1 span {
   border-radius: 9px;
   background: #fff;
   color: #426652;
-  font: 600 13px "DM Sans", sans-serif;
+  font:
+    600 13px "DM Sans",
+    sans-serif;
   cursor: pointer;
 }
-.privacy-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.privacy-toggle svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
 .values-hidden .metric,
 .values-hidden #category-total,
 .values-hidden .category-item b,
@@ -333,7 +344,9 @@ h1 span {
   filter: blur(8px);
   user-select: none;
 }
-.values-hidden .charts-grid { filter: blur(7px); }
+.values-hidden .charts-grid {
+  filter: blur(7px);
+}
 .summary-card {
   min-height: 122px;
   padding: 16px 18px;
@@ -868,8 +881,14 @@ th:last-child {
   font-size: 14px;
   font-weight: 600;
 }
-.recurring-toggle input { width: 18px; height: 18px; accent-color: #246c51; }
-.recurring-end-field[hidden] { display: none; }
+.recurring-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #246c51;
+}
+.recurring-end-field[hidden] {
+  display: none;
+}
 .optional {
   font-size: 9px;
   color: #9da69f;
@@ -2468,6 +2487,11 @@ td {
   }
   .icon-button {
     flex: none;
+  }
+  .mobile-settings-button {
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
   .page-heading {
     padding: 28px 0 20px;

@@ -623,6 +623,7 @@
       $("#settings-status").textContent = "";
       openModal("settings-modal");
     });
+    $("#open-settings-mobile").addEventListener("click", () => $("#open-settings").click());
     $("#save-settings").addEventListener("click", connectBin);
     $("#disconnect-bin").addEventListener("click", () => {
       state.settings = {};
