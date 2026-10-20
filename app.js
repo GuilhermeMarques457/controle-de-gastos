@@ -5,22 +5,11 @@
   const EXPENSE_CATEGORIES = [
     "Faculdade",
     "Serviços",
-    "Internet",
-    "Moto",
-    "Moto/Bike",
     "Moto/Carro",
     "Compras",
     "Lazer",
     "Comida",
-    "Remédio",
-    "Remedio",
-    "Gasolina",
     "Saúde",
-    "Ferias",
-    "Férias",
-    "Cartão",
-    "Psicóloga",
-    "Piscicologa",
     "Outros",
   ];
   const INCOME_CATEGORIES = [
@@ -28,9 +17,39 @@
     "Horas Extras",
     "Investimentos",
     "Rendimentos",
-    "Udemy",
+    "Ressarcimento",
     "Outros",
   ];
+  // Categorias que deixaram de ser sugeridas. Entradas antigas continuam
+  // preservadas, mas essas opções não devem aparecer em novos lançamentos.
+  const RETIRED_CATEGORIES = new Set([
+    "Internet",
+    "Moto",
+    "Moto/Bike",
+    "Remédio",
+    "Remedio",
+    "Gasolina",
+    "Gazolina",
+    "Ferias",
+    "Férias",
+    "Cartão",
+    "Psicóloga",
+    "Piscicologa",
+    "psicologa",
+    "Udemy",
+  ]);
+  const normalizeCategory = (category) =>
+    String(category || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLocaleLowerCase("pt-BR");
+  const retiredCategoryNames = new Set([
+    ...RETIRED_CATEGORIES,
+    "Gazolina",
+  ].map(normalizeCategory));
+  const isRetiredCategory = (category) =>
+    retiredCategoryNames.has(normalizeCategory(category));
   const DEFAULT_CATEGORIES = [...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES];
   const COLORS = [
     "#4d9a7e",
@@ -141,25 +160,59 @@
     return [...new Set([...DEFAULT_CATEGORIES, ...items].filter(Boolean))];
   }
   function generateRecurringEntries() {
-    const today = new Date(), currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    const today = new Date(),
+      currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
     let changed = false;
-    state.entries.filter((entry) => entry.recurring && entry.date).forEach((source) => {
-      const rootId = source.recurrenceId || source.id, start = source.date.slice(0, 7), lastMonth = source.recurringUntil?.slice(0, 7) || currentMonth;
-      const existing = new Set(state.entries.filter((item) => item.recurrenceId === rootId).map((item) => item.recurrenceMonth || item.date?.slice(0, 7)));
-      let [year, month] = start.split("-").map(Number); month++;
-      while (`${year}-${String(month).padStart(2, "0")}` <= currentMonth && `${year}-${String(month).padStart(2, "0")}` <= lastMonth) {
-        const monthKey = `${year}-${String(month).padStart(2, "0")}`;
-        if (!existing.has(monthKey)) { state.entries.push({ ...source, id: uid(), date: `${monthKey}-01`, recurring: false, recurrenceId: rootId, recurrenceMonth: monthKey }); existing.add(monthKey); changed = true; }
-        if (++month > 12) { month = 1; year++; }
-      }
-    });
+    state.entries
+      .filter((entry) => entry.recurring && entry.date)
+      .forEach((source) => {
+        const rootId = source.recurrenceId || source.id,
+          start = source.date.slice(0, 7),
+          lastMonth = source.recurringUntil?.slice(0, 7) || currentMonth;
+        const existing = new Set(
+          state.entries
+            .filter((item) => item.recurrenceId === rootId)
+            .map((item) => item.recurrenceMonth || item.date?.slice(0, 7)),
+        );
+        let [year, month] = start.split("-").map(Number);
+        month++;
+        while (
+          `${year}-${String(month).padStart(2, "0")}` <= currentMonth &&
+          `${year}-${String(month).padStart(2, "0")}` <= lastMonth
+        ) {
+          const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+          if (!existing.has(monthKey)) {
+            state.entries.push({
+              ...source,
+              id: uid(),
+              date: `${monthKey}-01`,
+              recurring: false,
+              recurrenceId: rootId,
+              recurrenceMonth: monthKey,
+            });
+            existing.add(monthKey);
+            changed = true;
+          }
+          if (++month > 12) {
+            month = 1;
+            year++;
+          }
+        }
+      });
     return changed;
   }
   async function saveRecurringEntries() {
     persistLocal();
     if (state.settings.binId && state.settings.key) {
-      try { await binRequest("PUT", { entries: state.entries, categories: state.categories, updatedAt: new Date().toISOString() }); }
-      catch { updateSyncLabel("Salvo neste dispositivo"); }
+      try {
+        await binRequest("PUT", {
+          entries: state.entries,
+          categories: state.categories,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch {
+        updateSyncLabel("Salvo neste dispositivo");
+      }
     }
   }
   function alignInitialMonth() {
@@ -461,8 +514,15 @@
     const defaults = type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
     const used = state.entries
       .filter((e) => e.type === type)
-      .map((e) => e.category);
-    const available = [...new Set([...defaults, ...used])];
+      .map((e) => e.category)
+      .filter((category) => !isRetiredCategory(category));
+    // Ao editar um lançamento antigo, mantenha a categoria atual disponível
+    // até que a pessoa escolha outra. Ela não será sugerida em lançamentos novos.
+    const preservedSelection =
+      selected && isRetiredCategory(selected) && $("#entry-id").value
+        ? [selected]
+        : [];
+    const available = [...new Set([...defaults, ...used, ...preservedSelection])];
     select.innerHTML = available
       .map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`)
       .join("");
@@ -524,15 +584,22 @@
     bindSectionNavigation();
     $("#new-entry").addEventListener("click", prepareNew);
     $("#privacy-toggle").addEventListener("click", () => {
-      const hidden = document.body.classList.toggle("values-hidden"), button = $("#privacy-toggle");
+      const hidden = document.body.classList.toggle("values-hidden"),
+        button = $("#privacy-toggle");
       button.setAttribute("aria-pressed", String(hidden));
-      button.setAttribute("aria-label", hidden ? "Mostrar valores" : "Esconder valores");
+      button.setAttribute(
+        "aria-label",
+        hidden ? "Mostrar valores" : "Esconder valores",
+      );
       button.title = hidden ? "Mostrar valores" : "Esconder valores";
-      button.querySelector("span").textContent = hidden ? "Mostrar valores" : "Esconder valores";
+      button.querySelector("span").textContent = hidden
+        ? "Mostrar valores"
+        : "Esconder valores";
     });
     $("#entry-recurring").addEventListener("change", (event) => {
       $("#recurring-end-field").hidden = !event.target.checked;
-      if (event.target.checked) $("#entry-date").value = `${$("#entry-date").value.slice(0, 7)}-01`;
+      if (event.target.checked)
+        $("#entry-date").value = `${$("#entry-date").value.slice(0, 7)}-01`;
     });
     $("#empty-add").addEventListener("click", prepareNew);
     $("#prev-month").addEventListener("click", () => shiftMonth(-1));
@@ -554,7 +621,11 @@
       )
         state.categories.push(custom);
       const id = $("#entry-id").value;
+      const previousEntry = id
+        ? state.entries.find((item) => item.id === id)
+        : null;
       const entry = {
+        ...(previousEntry || {}),
         id: id || uid(),
         type: document.querySelector('input[name="type"]:checked').value,
         description: $("#entry-description").value.trim(),
@@ -563,14 +634,24 @@
         category,
         note: $("#entry-note").value.trim(),
         recurring: $("#entry-recurring").checked,
-        recurringUntil: $("#entry-recurring").checked ? $("#entry-recurring-until").value : "",
+        recurringUntil: $("#entry-recurring").checked
+          ? $("#entry-recurring-until").value
+          : "",
       };
-      if (entry.recurring && entry.recurringUntil && entry.recurringUntil < entry.date) { toast("A data final deve ser igual ou posterior à data do lançamento."); return; }
+      if (
+        entry.recurring &&
+        entry.recurringUntil &&
+        entry.recurringUntil < entry.date
+      ) {
+        toast("A data final deve ser igual ou posterior à data do lançamento.");
+        return;
+      }
       if (entry.recurring) entry.recurrenceId = id || entry.id;
       else if (id) {
         const previous = state.entries.find((item) => item.id === id);
         if (previous?.recurrenceId) entry.recurrenceId = previous.recurrenceId;
-        if (previous?.recurrenceMonth) entry.recurrenceMonth = previous.recurrenceMonth;
+        if (previous?.recurrenceMonth)
+          entry.recurrenceMonth = previous.recurrenceMonth;
       }
       if (id)
         state.entries = state.entries.map((e) => (e.id === id ? entry : e));
@@ -623,7 +704,9 @@
       $("#settings-status").textContent = "";
       openModal("settings-modal");
     });
-    $("#open-settings-mobile").addEventListener("click", () => $("#open-settings").click());
+    $("#open-settings-mobile").addEventListener("click", () =>
+      $("#open-settings").click(),
+    );
     $("#save-settings").addEventListener("click", connectBin);
     $("#disconnect-bin").addEventListener("click", () => {
       state.settings = {};
@@ -877,6 +960,188 @@
     const file = event.target.files?.[0];
     if (!file) return;
     try {
+      if (
+        file.name.toLowerCase().endsWith(".pdf") ||
+        file.type === "application/pdf"
+      ) {
+        const entries = await importBankPDF(file);
+        if (!entries.length) {
+          toast(
+            "Não encontrei movimentações neste PDF. Por enquanto, a importação de extrato aceita o formato do Mercado Pago.",
+          );
+          return;
+        }
+        const importedInterestIds = new Set(
+          entries.flatMap((entry) =>
+            (entry.externalOperations || []).map((operation) => operation.id),
+          ),
+        );
+        const parsedInterest = entries.find((entry) => entry.externalOperations?.length);
+        const previousInterestEntries = importedInterestIds.size
+          ? state.entries.filter(
+              (entry) =>
+                entry.externalOperations?.some((operation) =>
+                  importedInterestIds.has(operation.id),
+                ) ||
+                (importedInterestIds.has(entry.externalId) &&
+                  entry.note === "Importado de extrato PDF") ||
+                (parsedInterest &&
+                  !entry.externalId &&
+                  entry.note === "Importado de extrato PDF" &&
+                  entry.type === "income" &&
+                  entry.date?.slice(0, 7) === parsedInterest.date?.slice(0, 7) &&
+                  (/^rendimento(?:s)?$/i.test(entry.description || "") ||
+                    /rendimentos?/i.test(entry.description || "") ||
+                    parsedInterest.externalOperations.some(
+                      (operation) =>
+                        Number(operation.amount.toFixed(2)) ===
+                        Number(Number(entry.amount).toFixed(2)),
+                    ))),
+            )
+          : [];
+        if (parsedInterest && previousInterestEntries.length) {
+          const previousAggregate = previousInterestEntries.find(
+            (entry) => entry.externalOperations?.length,
+          );
+          const categoryCounts = new Map();
+          previousInterestEntries.forEach((entry) =>
+            categoryCounts.set(
+              entry.category,
+              (categoryCounts.get(entry.category) || 0) + 1,
+            ),
+          );
+          const mostUsedCategory = [...categoryCounts].sort(
+            (a, b) => b[1] - a[1],
+          )[0]?.[0];
+          const operations = [
+            ...new Map(
+              [
+                ...previousInterestEntries.flatMap(
+                  (entry) => entry.externalOperations || [],
+                ),
+                ...parsedInterest.externalOperations,
+              ].map((operation) => [operation.id, operation]),
+            ).values(),
+          ];
+          parsedInterest.id = previousAggregate?.id || parsedInterest.id;
+          parsedInterest.category =
+            previousAggregate?.category || mostUsedCategory || parsedInterest.category;
+          if (
+            previousAggregate &&
+            previousAggregate.description !== "Rendimento"
+          )
+            parsedInterest.description = previousAggregate.description;
+          parsedInterest.externalOperations = operations;
+          parsedInterest.amount = Number(
+            operations
+              .reduce((sum, operation) => sum + operation.amount, 0)
+              .toFixed(2),
+          );
+        }
+        if (previousInterestEntries.length) {
+          const previousIds = new Set(
+            previousInterestEntries.map((entry) => entry.id),
+          );
+          state.entries = state.entries.filter(
+            (entry) => !previousIds.has(entry.id),
+          );
+        }
+        const parsedByOperation = new Map(
+          entries
+            .filter((entry) => entry.externalId)
+            .map((entry) => [entry.externalId, entry]),
+        );
+        const recoveredOperationIds = new Set();
+        let repairedDescriptions = 0;
+        state.entries = state.entries.map((entry) => {
+          const parsed =
+            parsedByOperation.get(entry.externalId) ||
+            (!entry.externalId && entry.note === "Importado de extrato PDF"
+              ? entries.find(
+                  (candidate) =>
+                    candidate.externalId &&
+                    !recoveredOperationIds.has(candidate.externalId) &&
+                    candidate.date === entry.date &&
+                    candidate.type === entry.type &&
+                    Number(candidate.amount.toFixed(2)) ===
+                      Number(Number(entry.amount).toFixed(2)),
+                )
+              : null);
+          if (!parsed || entry.note !== "Importado de extrato PDF") return entry;
+          if (parsed.externalId) {
+            recoveredOperationIds.add(parsed.externalId);
+          }
+          const updates = {};
+          if (!entry.externalId && parsed.externalId)
+            updates.externalId = parsed.externalId;
+          if (
+            (!entry.sourceDescription ||
+              entry.description === entry.sourceDescription) &&
+            entry.description !== parsed.description
+          ) {
+            updates.description = parsed.description;
+            updates.sourceDescription = parsed.description;
+            repairedDescriptions++;
+          }
+          if (!entry.sourceDescription) {
+            updates.sourceDescription = parsed.description;
+          }
+          if (Object.keys(updates).length) return { ...entry, ...updates };
+          return entry;
+        });
+        const knownOperations = new Set(
+          state.entries
+            .flatMap((entry) => [
+              entry.externalId,
+              ...(entry.externalOperations || []).map(
+                (operation) => operation.id,
+              ),
+            ])
+            .filter(Boolean),
+        );
+        const fresh = entries.flatMap((entry) => {
+          if (entry.externalOperations) {
+            const newOperations = entry.externalOperations.filter(
+              (operation) => !knownOperations.has(operation.id),
+            );
+            newOperations.forEach((operation) =>
+              knownOperations.add(operation.id),
+            );
+            if (!newOperations.length) return [];
+            return [
+              {
+                ...entry,
+                externalOperations: newOperations,
+                amount: Number(
+                  newOperations
+                    .reduce((sum, operation) => sum + operation.amount, 0)
+                    .toFixed(2),
+                ),
+              },
+            ];
+          }
+          if (!entry.externalId || knownOperations.has(entry.externalId))
+            return [];
+          knownOperations.add(entry.externalId);
+          return [entry];
+        });
+        if (!fresh.length && !repairedDescriptions) {
+          toast(
+            "Este extrato já foi importado. Nenhuma movimentação duplicada foi adicionada.",
+          );
+          return;
+        }
+        state.entries.push(...fresh);
+        state.categories = mergeCategories([
+          ...state.categories,
+          ...fresh.map((entry) => entry.category),
+        ]);
+        const skipped = entries.length - fresh.length;
+        await saveData(
+          `${fresh.length} lançamentos importados${repairedDescriptions ? `; ${repairedDescriptions} descrições corrigidas` : ""}${skipped ? `; ${skipped} duplicados ignorados` : ""}.`,
+        );
+        return;
+      }
       const text = new TextDecoder("utf-8")
         .decode(await file.arrayBuffer())
         .replace(/^\uFEFF/, "");
@@ -894,10 +1159,198 @@
       state.categories = mergeCategories([...state.categories, ...categories]);
       await saveData(`${flat.length} lançamentos importados.`);
     } catch (error) {
-      toast("Não foi possível ler este CSV.");
+      toast(
+        error?.name === "PasswordException"
+          ? "Este PDF está protegido por senha e não pode ser lido."
+          : "Não foi possível ler o arquivo. Confira se o PDF é um extrato do Mercado Pago ou tente outro CSV.",
+      );
     } finally {
       event.target.value = "";
     }
+  }
+  async function importBankPDF(file) {
+    if (!window.pdfjsLib) throw Error("Leitor de PDF indisponível.");
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() })
+      .promise;
+    const transactions = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      const page = await pdf.getPage(pageNumber),
+        content = await page.getTextContent(),
+        lines = new Map();
+      for (const item of content.items) {
+        if (!item.str?.trim()) continue;
+        const x = item.transform[4],
+          y = Math.round(item.transform[5] / 2) * 2;
+        if (!lines.has(y)) lines.set(y, []);
+        lines.get(y).push({ x, text: item.str.trim() });
+      }
+      const pageText = [...lines.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([, items]) =>
+          items
+            .sort((a, b) => a.x - b.x)
+            .map((item) => item.text)
+            .join(" "),
+        )
+        .join("\n");
+      transactions.push(
+        ...parseBankStatementText(pageText, extractPdfDescriptions(lines)),
+      );
+    }
+    const earnings = transactions.filter((entry) => entry.externalOperations?.length);
+    if (earnings.length > 1) {
+      const operations = [
+        ...new Map(
+          earnings.flatMap((entry) => entry.externalOperations).map((operation) => [operation.id, operation]),
+        ).values(),
+      ];
+      const firstEarningIndex = transactions.indexOf(earnings[0]);
+      for (let index = transactions.length - 1; index >= 0; index--)
+        if (transactions[index].externalOperations?.length)
+          transactions.splice(index, 1);
+      transactions.splice(firstEarningIndex, 0, {
+        ...earnings[0],
+        id: uid(),
+        externalOperations: operations,
+        amount: Number(
+          operations.reduce((sum, operation) => sum + operation.amount, 0).toFixed(2),
+        ),
+      });
+    }
+    return transactions;
+  }
+  function extractPdfDescriptions(lines) {
+    const descriptions = new Map();
+    const orderedLines = [...lines.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([y, items]) => ({ y, items: [...items].sort((a, b) => a.x - b.x) }));
+    const dateRows = [];
+    const operations = [];
+    for (const line of orderedLines)
+      for (const item of line.items) {
+        if (item.x < 89 && /\b\d{2}-\d{2}-\d{4}\b/.test(item.text))
+          dateRows.push(line.y);
+        if (item.x >= 180 && item.x < 308) {
+          const match = item.text.match(/\b(\d{12,13})\b/);
+          if (match) operations.push({ id: match[1], y: line.y });
+        }
+      }
+    const nearestDateRow = (y) =>
+      dateRows.reduce((nearest, candidate) =>
+        nearest === null || Math.abs(candidate - y) < Math.abs(nearest - y)
+          ? candidate
+          : nearest,
+      null);
+    const descriptionsByDate = new Map();
+    for (const line of orderedLines) {
+      for (const item of line.items) {
+        if (item.x < 70 || item.x >= 197 || /^descri[cç][aã]o$/i.test(item.text))
+          continue;
+        const dateY = nearestDateRow(line.y);
+        if (dateY === null || Math.abs(dateY - line.y) > 18) continue;
+        if (!descriptionsByDate.has(dateY)) descriptionsByDate.set(dateY, []);
+        descriptionsByDate.get(dateY).push({ y: line.y, x: item.x, text: item.text });
+      }
+    }
+    for (const operation of operations) {
+      const dateY = nearestDateRow(operation.y);
+      const words = descriptionsByDate.get(dateY) || [];
+      const description = words
+        .sort((a, b) => b.y - a.y || a.x - b.x)
+        .map((word) => word.text)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (description) descriptions.set(operation.id, description);
+    }
+    return descriptions;
+  }
+  function parseBankStatementText(text, columnDescriptions = new Map()) {
+    const dates = [...text.matchAll(/\b(\d{2})-(\d{2})-(\d{4})\b/g)],
+      entries = [],
+      seen = new Set();
+    const interestOperations = [];
+    let interestDate = "";
+    dates.forEach((dateMatch, index) => {
+      const start = dateMatch.index + dateMatch[0].length,
+        end = dates[index + 1]?.index ?? text.length,
+        segment = text.slice(start, end);
+      const idMatch = segment.match(/\b(\d{12,13})\b/),
+        amountMatch = (
+          idMatch ? segment.slice(idMatch.index + idMatch[0].length) : segment
+        ).match(/R\$\s*(-?[\d.]+,\d{2})/);
+      if (!amountMatch) return;
+      const signedAmount = parseSignedAmount(amountMatch[1]);
+      let description = segment
+        .slice(0, idMatch ? idMatch.index : segment.indexOf(amountMatch[0]))
+        .replace(/[\s\n]+/g, " ")
+        .trim();
+      description = description
+        .replace(/^(?:Data\s+Descri[cç][aã]o|Descri[cç][aã]o)\s*/i, "")
+        .trim();
+      const operationId =
+        idMatch?.[1] ||
+        `sem-id:${dateMatch[3]}${dateMatch[2]}${dateMatch[1]}:${description.toLocaleLowerCase("pt-BR")}:${signedAmount}`;
+      description = columnDescriptions.get(idMatch?.[1]) || description;
+      if (!description) description = "Movimentação do extrato";
+      if (seen.has(operationId)) return;
+      seen.add(operationId);
+      const income = signedAmount > 0;
+      if (income && /^rendimentos?\b/i.test(description)) {
+        interestOperations.push({ id: operationId, amount: signedAmount });
+        interestDate = `${dateMatch[3]}-${dateMatch[2]}-01`;
+        return;
+      }
+      entries.push({
+        id: uid(),
+        externalId: operationId,
+        type: income ? "income" : "expense",
+        description,
+        amount: Math.abs(signedAmount),
+        date: `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`,
+        category: categorizeBankEntry(description, income),
+        sourceDescription: description,
+        note: "Importado de extrato PDF",
+      });
+    });
+    if (interestOperations.length)
+      entries.push({
+        id: uid(),
+        type: "income",
+        description: "Rendimento",
+        amount: Number(
+          interestOperations
+            .reduce((sum, operation) => sum + operation.amount, 0)
+            .toFixed(2),
+        ),
+        date: interestDate,
+        category: "Rendimentos",
+        externalOperations: interestOperations,
+        note: "Total de rendimentos do extrato PDF",
+      });
+    return entries;
+  }
+  function parseSignedAmount(raw) {
+    const value = String(raw || "")
+      .trim()
+      .replace(/R\$\s?/gi, "")
+      .replace(/\s/g, "")
+      .replace(/\./g, "")
+      .replace(",", ".")
+      .replace(/[^\d.-]/g, "");
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+  }
+  function categorizeBankEntry(description, income) {
+    const text = description
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    if (income && /pix recebido\s+guilherme marques dos santos/.test(text))
+      return "Salário";
+    return "Indefinido";
   }
   boot();
 })();

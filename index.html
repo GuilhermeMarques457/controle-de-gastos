@@ -12,6 +12,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
     <script
       src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
       defer
@@ -64,8 +65,8 @@
             <button
               class="icon-button"
               id="import-button"
-              title="Importar CSV"
-              aria-label="Importar CSV"
+              title="Importar CSV ou PDF"
+              aria-label="Importar CSV ou PDF"
             >
               ⇧</button
             ><button class="icon-button mobile-settings-button" id="open-settings-mobile" title="Configurações" aria-label="Configurações">⚙</button
@@ -253,7 +254,7 @@
       </main>
     </div>
 
-    <input id="csv-file" type="file" accept=".csv,text/csv" hidden />
+    <input id="csv-file" type="file" accept=".csv,.pdf,text/csv,application/pdf" hidden />
     <div class="modal-backdrop" id="entry-modal" aria-hidden="true">
       <section
         class="modal"
