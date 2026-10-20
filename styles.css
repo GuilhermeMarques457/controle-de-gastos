@@ -1,7 +1,7 @@
 :root {
   font-family: "DM Sans", sans-serif;
   color: #202c29;
-  background: #f5f6f2;
+  background: #ffffff;
   font-synthesis: none;
   font-optical-sizing: auto;
   --ink: #202c29;
@@ -18,7 +18,7 @@
 }
 body {
   margin: 0;
-  background: #f5f6f2;
+  background: #ffffff;
 }
 .app-shell {
   min-height: 100vh;
@@ -1662,7 +1662,7 @@ td {
   --paper: #fffdf8;
 }
 body {
-  background: #f8f6f0;
+  background: #ffffff;
   color: #202a25;
 }
 .sidebar {
