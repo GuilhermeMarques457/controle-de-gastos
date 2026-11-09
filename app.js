@@ -1009,10 +1009,10 @@
         file.name.toLowerCase().endsWith(".pdf") ||
         file.type === "application/pdf"
       ) {
-        const entries = await importBankPDF(file);
+        const entries = await importStatementPDF(file);
         if (!entries.length) {
           toast(
-            "Não encontrei movimentações neste PDF. Por enquanto, a importação de extrato aceita o formato do Mercado Pago.",
+            "Não encontrei movimentações neste PDF. A importação aceita extratos do Mercado Pago e do Nubank.",
           );
           return;
         }
@@ -1213,11 +1213,193 @@
       toast(
         error?.name === "PasswordException"
           ? "Este PDF está protegido por senha e não pode ser lido."
-          : "Não foi possível ler o arquivo. Confira se o PDF é um extrato do Mercado Pago ou tente outro CSV.",
+          : "Não foi possível ler o arquivo. Confira se o PDF é um extrato do Mercado Pago ou Nubank, ou tente outro CSV.",
       );
     } finally {
       event.target.value = "";
     }
+  }
+  async function importStatementPDF(file) {
+    if (!window.pdfjsLib) throw Error("Leitor de PDF indisponível.");
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() })
+      .promise;
+    const pages = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      const page = await pdf.getPage(pageNumber),
+        content = await page.getTextContent(),
+        lines = new Map();
+      for (const item of content.items) {
+        if (!item.str?.trim()) continue;
+        const y = Math.round(item.transform[5] / 2) * 2;
+        if (!lines.has(y)) lines.set(y, []);
+        lines.get(y).push({ x: item.transform[4], text: item.str.trim() });
+      }
+      pages.push(
+        [...lines.entries()]
+          .sort((a, b) => b[0] - a[0])
+          .map(([, items]) =>
+            items
+              .sort((a, b) => a.x - b.x)
+              .map((item) => item.text)
+              .join(" ")
+              .replace(/\s+/g, " ")
+              .trim(),
+          ),
+      );
+    }
+    const fullText = pages.flat().join("\n");
+    if (/\bnu pagamentos\b|\bnubank\b/i.test(fullText))
+      return parseNubankStatement(pages);
+    // Keep the Mercado Pago reader as-is; this only routes other PDF formats.
+    return importBankPDF(file);
+  }
+  function parseNubankStatement(pages) {
+    const monthNumbers = {
+      JAN: "01",
+      FEV: "02",
+      MAR: "03",
+      ABR: "04",
+      MAI: "05",
+      JUN: "06",
+      JUL: "07",
+      AGO: "08",
+      SET: "09",
+      OUT: "10",
+      NOV: "11",
+      DEZ: "12",
+    };
+    const datePattern = /^\s*(\d{1,2})\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s+(\d{4})\b\s*(.*)$/i;
+    const amountPattern = /(?<![\d.])((?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})(?!\d)/;
+    const transactionPattern = /^(?:transfer[eê]ncia|pix|compra|pagamento|aplica[cç][aã]o|resgate|dep[oó]sito|rendimento|estorno|saque|recarga|d[eé]bito|cr[eé]dito|tarifa|boleto|cashback|empr[eé]stimo)\b/i;
+    const boilerplatePattern = /^(?:cpf\b|\d{8,}[-\d]*$|\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\s+a\s+|valores em r\$|saldo inicial\b|rendimento l[ií]quido\b|saldo final do per[ií]odo\b|movimenta[cç][oõ]es\b|extrato gerado\b|tem alguma d[uú]vida\b|caso a solu[cç][aã]o\b|o saldo l[ií]quido\b|n[aã]o nos responsabilizamos\b|asseguramos a autenticidade\b|nu financeira\b|cnpj\s*:)/i;
+    const parsed = [];
+    let currentDate = "";
+    let pending = null;
+    const finishPending = () => {
+      if (!pending) return;
+      const amountLineIndex = pending.lines.findIndex((line) =>
+        amountPattern.test(line),
+      );
+      if (amountLineIndex < 0) {
+        pending = null;
+        return;
+      }
+      const amountMatch = pending.lines[amountLineIndex].match(amountPattern);
+      const rawDescription = [
+        ...pending.lines.slice(0, amountLineIndex),
+        pending.lines[amountLineIndex].slice(0, amountMatch.index),
+      ]
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .replace(/\s+-\s*$/, "")
+        .trim();
+      const amount = parseSignedAmount(amountMatch[1]);
+      if (currentDate && rawDescription && Number.isFinite(amount))
+        parsed.push({ date: currentDate, description: rawDescription, amount });
+      pending = null;
+    };
+    for (const pageLines of pages) {
+      for (const originalLine of pageLines) {
+        const line = originalLine.trim();
+        if (!line || boilerplatePattern.test(line)) continue;
+        const dateMatch = line.match(datePattern);
+        if (dateMatch) {
+          finishPending();
+          currentDate = `${dateMatch[3]}-${monthNumbers[dateMatch[2].toUpperCase()]}-${String(dateMatch[1]).padStart(2, "0")}`;
+          continue;
+        }
+        if (/^(?:total de entradas|total de sa[ií]das|saldo inicial|saldo final|rendimento l[ií]quido)\b/i.test(line)) {
+          finishPending();
+          continue;
+        }
+        if (!currentDate) continue;
+        const hasAmount = amountPattern.test(line);
+        const startsTransaction = transactionPattern.test(line);
+        if (startsTransaction) {
+          finishPending();
+          pending = { lines: [line] };
+        } else if (hasAmount && pending && pending.lines.some((part) => amountPattern.test(part))) {
+          finishPending();
+          pending = { lines: [line] };
+        } else if (pending) {
+          pending.lines.push(line);
+        } else if (hasAmount) {
+          pending = { lines: [line] };
+        }
+      }
+    }
+    finishPending();
+
+    const occurrences = new Map(),
+      entries = [],
+      interestOperations = [];
+    for (const transaction of parsed) {
+      const normalizedDescription = transaction.description
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("pt-BR")
+        .replace(/\s+/g, " ")
+        .trim();
+      const descriptionKey = `${transaction.date}|${transaction.amount.toFixed(2)}|${normalizedDescription}`;
+      const occurrence = (occurrences.get(descriptionKey) || 0) + 1;
+      occurrences.set(descriptionKey, occurrence);
+      const operationId = `nubank:${hashStatementIdentity(descriptionKey)}:${occurrence}`;
+      const normalized = normalizeStatementText(transaction.description);
+      const income = /^(?:transferencia recebida|pix recebido|resgate|deposito|rendimento|estorno recebido|credito recebido)\b/.test(normalized);
+      if (income && /^rendimentos?\b/.test(normalized)) {
+        interestOperations.push({ id: operationId, amount: transaction.amount });
+        continue;
+      }
+      entries.push({
+        id: uid(),
+        externalId: operationId,
+        type: income ? "income" : "expense",
+        description: transaction.description,
+        amount: transaction.amount,
+        date: transaction.date,
+        category: "Indefinido",
+        sourceDescription: transaction.description,
+        note: "Importado de extrato PDF",
+      });
+    }
+    if (interestOperations.length) {
+      const interestDate = parsed.find((transaction) =>
+        /^rendimentos?\b/.test(normalizeStatementText(transaction.description)),
+      )?.date;
+      entries.push({
+        id: uid(),
+        type: "income",
+        description: "Rendimento",
+        amount: Number(
+          interestOperations
+            .reduce((sum, operation) => sum + operation.amount, 0)
+            .toFixed(2),
+        ),
+        date: `${interestDate?.slice(0, 7) || currentDate.slice(0, 7)}-01`,
+        category: "Rendimentos",
+        externalOperations: interestOperations,
+        note: "Total de rendimentos do extrato PDF",
+      });
+    }
+    return entries;
+  }
+  function normalizeStatementText(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("pt-BR")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  function hashStatementIdentity(value) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index++) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
   }
   async function importBankPDF(file) {
     if (!window.pdfjsLib) throw Error("Leitor de PDF indisponível.");

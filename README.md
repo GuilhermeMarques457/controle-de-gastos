@@ -20,14 +20,14 @@ O app usa a API v3 do JSONBin com um bin dedicado, sem versionamento do históri
 
 ## Importar CSV
 
-Use o botão de importação no topo. São aceitos arquivos CSV e extratos PDF do Mercado Pago:
+Use o botão de importação no topo. São aceitos arquivos CSV e extratos PDF do Mercado Pago e do Nubank:
 
 - As planilhas matriciais enviadas: uma linha por categoria e meses nas colunas, com seções **RECEITAS** e **DESPESAS** e o ano no título.
 - Arquivos tabulares com colunas como `Data`, `Valor`, `Categoria`, `Tipo`, `Descrição` e `Observação`. `Data` e `Valor` são obrigatórias; a data pode estar em `DD/MM/AAAA` ou `AAAA-MM-DD`.
 
-No extrato PDF do Mercado Pago, as movimentações são identificadas pelo ID da operação. Se o mesmo extrato ou um período sobreposto for importado novamente, os IDs já registrados são ignorados.
+No extrato PDF do Mercado Pago, as movimentações são identificadas pelo ID da operação. Se o mesmo extrato ou um período sobreposto for importado novamente, os IDs já registrados são ignorados. No PDF do Nubank, cada movimentação recebe uma identificação calculada a partir da data, descrição, valor e ocorrência, para que reimportações e períodos sobrepostos não dupliquem lançamentos.
 
-As movimentações sem categoria confirmada entram como **Indefinido** para revisão manual. Pix recebido com o nome do titular da conta é categorizado como **Salário**. As linhas de rendimentos são somadas em uma única receita por extrato.
+As movimentações sem categoria confirmada entram como **Indefinido** para revisão manual. No Mercado Pago, Pix recebido com o nome do titular da conta é categorizado como **Salário**. As linhas de rendimentos do extrato são somadas em uma única receita por importação.
 
 Cada valor preenchido na matriz mensal vira um lançamento no primeiro dia daquele mês. As categorias encontradas são mantidas como aparecem na planilha, incluindo variações entre anos.
 
