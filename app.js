@@ -88,6 +88,7 @@
   const state = {
     entries: [],
     categories: [...DEFAULT_CATEGORIES],
+    importedThrough: {},
     activeMonth: localMonth(),
     filters: { type: "all", month: "" },
     showAll: false,
@@ -135,6 +136,10 @@
     if (local) {
       state.entries = local.entries;
       state.categories = mergeCategories(local.categories || []);
+      state.importedThrough = mergeStatementCheckpoints(
+        local.importedThrough,
+        state.entries,
+      );
       alignInitialMonth();
     } else if (state.settings.binId && state.settings.key) {
       try {
@@ -157,6 +162,74 @@
   }
   function mergeCategories(items) {
     return [...new Set([...DEFAULT_CATEGORIES, ...items].filter(Boolean))];
+  }
+  function mergeStatementCheckpoints(checkpoints, entries = state.entries) {
+    const merged = { ...inferStatementCheckpoints(entries) };
+    for (const source of ["mercado-pago", "nubank"]) {
+      const savedDate = checkpoints?.[source];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(savedDate || ""))
+        merged[source] =
+          merged[source] && merged[source] > savedDate
+            ? merged[source]
+            : savedDate;
+    }
+    return merged;
+  }
+  function inferStatementCheckpoints(entries = []) {
+    const checkpoints = {};
+    for (const entry of entries) {
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(entry.date || "") ||
+        !["Importado de extrato PDF", "Total de rendimentos do extrato PDF"].includes(entry.note)
+      )
+        continue;
+      const operationIds = [
+        entry.externalId,
+        ...(entry.externalOperations || []).map((operation) => operation.id),
+      ].filter(Boolean);
+      const source =
+        entry.importSource === "nubank" ||
+        operationIds.some((id) => String(id).startsWith("nubank:"))
+          ? "nubank"
+          : "mercado-pago";
+      if (!checkpoints[source] || entry.date > checkpoints[source])
+        checkpoints[source] = entry.date;
+    }
+    return checkpoints;
+  }
+  function statementSource(entries) {
+    return entries.some(
+      (entry) =>
+        entry.importSource === "nubank" ||
+        String(entry.externalId || "").startsWith("nubank:") ||
+        (entry.externalOperations || []).some((operation) =>
+          String(operation.id).startsWith("nubank:"),
+        ),
+    )
+      ? "nubank"
+      : "mercado-pago";
+  }
+  function latestStatementDate(entries) {
+    return entries.reduce(
+      (latest, entry) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(entry.date || "") && entry.date > latest
+          ? entry.date
+          : latest,
+      "",
+    );
+  }
+  function formatStatementDate(date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return date || "";
+    const [year, month, day] = date.split("-").map(Number);
+    return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
+  }
+  function dataRecord() {
+    return {
+      entries: state.entries,
+      categories: state.categories,
+      importedThrough: state.importedThrough,
+      updatedAt: new Date().toISOString(),
+    };
   }
   function generateRecurringEntries() {
     const today = new Date(),
@@ -205,9 +278,7 @@
     if (state.settings.binId && state.settings.key) {
       try {
         await binRequest("PUT", {
-          entries: state.entries,
-          categories: state.categories,
-          updatedAt: new Date().toISOString(),
+          ...dataRecord(),
         });
       } catch {
         updateSyncLabel("Salvo neste dispositivo");
@@ -225,6 +296,10 @@
     if (data && Array.isArray(data.entries)) {
       state.entries = data.entries;
       state.categories = mergeCategories(data.categories || []);
+      state.importedThrough = mergeStatementCheckpoints(
+        data.importedThrough,
+        state.entries,
+      );
       persistLocal();
     }
   }
@@ -236,6 +311,7 @@
           version: 1,
           entries: state.entries,
           categories: state.categories,
+          importedThrough: state.importedThrough,
           updatedAt: new Date().toISOString(),
         }),
       );
@@ -252,9 +328,7 @@
       updateSyncLabel("Sincronizando…");
       try {
         await binRequest("PUT", {
-          entries: state.entries,
-          categories: state.categories,
-          updatedAt: new Date().toISOString(),
+          ...dataRecord(),
         });
         updateSyncLabel("Sincronizado com JSONBin");
         toast(message);
@@ -792,11 +866,7 @@
         remote = await binRequest("GET");
       } catch (error) {
         if (/404/.test(error.message)) {
-          await binRequest("PUT", {
-            entries: state.entries,
-            categories: state.categories,
-            updatedAt: new Date().toISOString(),
-          });
+          await binRequest("PUT", dataRecord());
           remote = null;
         } else throw error;
       }
@@ -805,11 +875,7 @@
         if (!readLocal() && Array.isArray(remoteData.entries))
           applyData(remoteData);
         else
-          await binRequest("PUT", {
-            entries: state.entries,
-            categories: state.categories,
-            updatedAt: new Date().toISOString(),
-          });
+          await binRequest("PUT", dataRecord());
       }
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
       persistLocal();
@@ -842,6 +908,7 @@
     localStorage.removeItem(STORAGE_KEY);
     state.entries = [];
     state.categories = [...DEFAULT_CATEGORIES];
+    state.importedThrough = {};
     try {
       const response = await binRequest("GET"),
         data = response.record || response;
@@ -849,6 +916,10 @@
         throw Error("O JSONBin não contém uma lista de lançamentos válida.");
       state.entries = data.entries;
       state.categories = mergeCategories(data.categories || []);
+      state.importedThrough = mergeStatementCheckpoints(
+        data.importedThrough,
+        state.entries,
+      );
       alignInitialMonth();
       if (generateRecurringEntries()) await saveRecurringEntries();
       else persistLocal();
@@ -1009,10 +1080,28 @@
         file.name.toLowerCase().endsWith(".pdf") ||
         file.type === "application/pdf"
       ) {
-        const entries = await importStatementPDF(file);
-        if (!entries.length) {
+        const allEntries = await importStatementPDF(file);
+        if (!allEntries.length) {
           toast(
             "Não encontrei movimentações neste PDF. A importação aceita extratos do Mercado Pago e do Nubank.",
+          );
+          return;
+        }
+        const source = statementSource(allEntries),
+          lastImportedDate =
+            state.importedThrough[source] ||
+            inferStatementCheckpoints(state.entries)[source] ||
+            "",
+          newestDateInFile = latestStatementDate(allEntries),
+          entries = allEntries.filter(
+            (entry) =>
+              entry.externalOperations?.length ||
+              !lastImportedDate ||
+              entry.date >= lastImportedDate,
+          );
+        if (!entries.length) {
+          toast(
+            `Este extrato não tem movimentações a partir de ${formatStatementDate(lastImportedDate)}.`,
           );
           return;
         }
@@ -1183,13 +1272,25 @@
           return;
         }
         state.entries.push(...fresh);
+        if (newestDateInFile) {
+          state.importedThrough = mergeStatementCheckpoints(
+            {
+              ...state.importedThrough,
+              [source]:
+                !lastImportedDate || newestDateInFile > lastImportedDate
+                  ? newestDateInFile
+                  : lastImportedDate,
+            },
+            state.entries,
+          );
+        }
         state.categories = mergeCategories([
           ...state.categories,
           ...fresh.map((entry) => entry.category),
         ]);
         const skipped = entries.length - fresh.length;
         await saveData(
-          `${fresh.length} lançamentos importados${repairedDescriptions ? `; ${repairedDescriptions} descrições corrigidas` : ""}${skipped ? `; ${skipped} duplicados ignorados` : ""}.`,
+          `${fresh.length} lançamentos importados${lastImportedDate ? ` desde ${formatStatementDate(lastImportedDate)} (inclusive)` : ""}${repairedDescriptions ? `; ${repairedDescriptions} descrições corrigidas` : ""}${skipped ? `; ${skipped} duplicados ignorados` : ""}.`,
         );
         return;
       }
@@ -1253,7 +1354,11 @@
     if (/\bnu pagamentos\b|\bnubank\b/i.test(fullText))
       return parseNubankStatement(pages);
     // Keep the Mercado Pago reader as-is; this only routes other PDF formats.
-    return importBankPDF(file);
+    const mercadoPagoEntries = await importBankPDF(file);
+    return mercadoPagoEntries.map((entry) => ({
+      ...entry,
+      importSource: "mercado-pago",
+    }));
   }
   function parseNubankStatement(pages) {
     const monthNumbers = {
@@ -1361,6 +1466,7 @@
         date: transaction.date,
         category: "Indefinido",
         sourceDescription: transaction.description,
+        importSource: "nubank",
         note: "Importado de extrato PDF",
       });
     }
@@ -1380,6 +1486,7 @@
         date: `${interestDate?.slice(0, 7) || currentDate.slice(0, 7)}-01`,
         category: "Rendimentos",
         externalOperations: interestOperations,
+        importSource: "nubank",
         note: "Total de rendimentos do extrato PDF",
       });
     }

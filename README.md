@@ -27,6 +27,8 @@ Use o botão de importação no topo. São aceitos arquivos CSV e extratos PDF d
 
 No extrato PDF do Mercado Pago, as movimentações são identificadas pelo ID da operação. Se o mesmo extrato ou um período sobreposto for importado novamente, os IDs já registrados são ignorados. No PDF do Nubank, cada movimentação recebe uma identificação calculada a partir da data, descrição, valor e ocorrência, para que reimportações e períodos sobrepostos não dupliquem lançamentos.
 
+Para cada banco, o app guarda a data mais recente alcançada pela importação. Na próxima importação, considera os lançamentos dessa data e os posteriores; a data de corte é inclusiva para capturar novas movimentações lançadas no mesmo dia. Os IDs existentes evitam repetir o que já foi importado, sem substituir categorias ou descrições que você editou.
+
 As movimentações sem categoria confirmada entram como **Indefinido** para revisão manual. No Mercado Pago, Pix recebido com o nome do titular da conta é categorizado como **Salário**. As linhas de rendimentos do extrato são somadas em uma única receita por importação.
 
 Cada valor preenchido na matriz mensal vira um lançamento no primeiro dia daquele mês. As categorias encontradas são mantidas como aparecem na planilha, incluindo variações entre anos.
