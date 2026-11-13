@@ -40,6 +40,14 @@ No formulário, as categorias sugeridas acompanham o tipo selecionado: despesas 
 - Use **Esconder valores** acima do resumo para ocultar os valores financeiros na tela.
 - No cadastro de uma movimentação, marque **Repetir todo mês, no dia 1** para criar os lançamentos dos meses seguintes automaticamente. O app completa meses em falta ao abrir e evita duplicar lançamentos. A data final é opcional; sem ela, a recorrência continua até ser desativada ou o lançamento recorrente ser excluído.
 
+## Clínica
+
+- A área **Clínica** permite cadastrar pacientes com telefone, frequência semanal, quinzenal ou mensal, data de início, valor por sessão e indicação de emergência. As sessões previstas são calculadas automaticamente para o mês selecionado, incluindo meses com quatro ou cinco sessões semanais.
+- Para cada sessão, registre presença (a confirmar, compareceu, faltou ou remarcou), valor e pagamento. Sessões pagas entram como receita da categoria **Atendimentos clínicos** no resumo e no fluxo financeiro, separadas dos lançamentos de salário.
+- As despesas podem ser classificadas como fixas, parceladas, recorrentes, únicas ou emergenciais, com vencimento no prazo, adiantado ou atrasado. Marque **Já foi pago** para contar a despesa como saída e escolha o pote que ela reduz.
+- A divisão inicial dos potes é **Contas 50%**, **Desejos 30%** e **Futuro 20%**. Ela pode ser ajustada; as entradas do mês são distribuídas pelas porcentagens e as despesas pagas reduzem o saldo disponível do pote escolhido.
+- Os dados de pacientes, sessões e potes ficam junto aos demais dados locais e também são incluídos no JSONBin quando a sincronização está conectada.
+
 ## Arquivos
 
 - `index.html` — estrutura da página

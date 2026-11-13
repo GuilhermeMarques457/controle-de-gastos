@@ -2,22 +2,28 @@
   "use strict";
   const STORAGE_KEY = "meuDinheiro.v1";
   const SETTINGS_KEY = "meuDinheiro.jsonbin";
+  const PERIOD_WIDGET_KEY = "meuDinheiro.periodWidget";
   const EXPENSE_CATEGORIES = [
-    "Faculdade",
-    "Serviços",
-    "Moto/Carro",
-    "Compras",
-    "Lazer",
-    "Comida",
-    "Saúde",
+    "Aluguel do consultório",
+    "Água, luz e internet",
+    "Materiais clínicos",
+    "Formação e supervisão",
+    "Impostos e contabilidade",
+    "Transporte",
+    "Marketing e divulgação",
+    "Plataformas e softwares",
+    "Taxas bancárias",
+    "Emergências",
     "Outros",
   ];
   const INCOME_CATEGORIES = [
     "Salário",
-    "Horas Extras",
-    "Investimentos",
-    "Rendimentos",
-    "Ressarcimento",
+    "Atendimentos clínicos",
+    "Pacotes de sessões",
+    "Avaliações psicológicas",
+    "Cursos e palestras",
+    "Supervisão profissional",
+    "Reembolsos",
     "Outros",
   ];
   // Categorias que deixaram de ser sugeridas. Entradas antigas continuam
@@ -87,6 +93,12 @@
   };
   const state = {
     entries: [],
+    patients: [],
+    clinicSessions: [],
+    pendingSessionDelete: "",
+    pendingSessionChange: null,
+    pendingPatientSave: null,
+    potPercentages: { accounts: 50, wishes: 30, future: 20 },
     categories: [...DEFAULT_CATEGORIES],
     importedThrough: {},
     activeMonth: localMonth(),
@@ -135,6 +147,9 @@
     const local = readLocal();
     if (local) {
       state.entries = local.entries;
+      state.patients = Array.isArray(local.patients) ? local.patients : [];
+      state.clinicSessions = Array.isArray(local.clinicSessions) ? local.clinicSessions : [];
+      state.potPercentages = { ...state.potPercentages, ...(local.potPercentages || {}) };
       state.categories = mergeCategories(local.categories || []);
       state.importedThrough = mergeStatementCheckpoints(
         local.importedThrough,
@@ -226,6 +241,9 @@
   function dataRecord() {
     return {
       entries: state.entries,
+      patients: state.patients,
+      clinicSessions: state.clinicSessions,
+      potPercentages: state.potPercentages,
       categories: state.categories,
       importedThrough: state.importedThrough,
       updatedAt: new Date().toISOString(),
@@ -252,12 +270,15 @@
           `${year}-${String(month).padStart(2, "0")}` <= currentMonth &&
           `${year}-${String(month).padStart(2, "0")}` <= lastMonth
         ) {
-          const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+          const monthKey = `${year}-${String(month).padStart(2, "0")}`,
+            recurrenceDay = Number(source.recurrenceDay || source.date.slice(8, 10)),
+            day = Math.min(recurrenceDay, new Date(year, month, 0).getDate());
           if (!existing.has(monthKey)) {
             state.entries.push({
               ...source,
               id: uid(),
-              date: `${monthKey}-01`,
+              date: `${monthKey}-${String(day).padStart(2, "0")}`,
+              recurrenceDay,
               recurring: false,
               recurrenceId: rootId,
               recurrenceMonth: monthKey,
@@ -295,6 +316,9 @@
   function applyData(data) {
     if (data && Array.isArray(data.entries)) {
       state.entries = data.entries;
+      state.patients = Array.isArray(data.patients) ? data.patients : [];
+      state.clinicSessions = Array.isArray(data.clinicSessions) ? data.clinicSessions : [];
+      state.potPercentages = { ...state.potPercentages, ...(data.potPercentages || {}) };
       state.categories = mergeCategories(data.categories || []);
       state.importedThrough = mergeStatementCheckpoints(
         data.importedThrough,
@@ -310,6 +334,9 @@
         JSON.stringify({
           version: 1,
           entries: state.entries,
+          patients: state.patients,
+          clinicSessions: state.clinicSessions,
+          potPercentages: state.potPercentages,
           categories: state.categories,
           importedThrough: state.importedThrough,
           updatedAt: new Date().toISOString(),
@@ -371,22 +398,158 @@
     return `${MONTHS[m - 1][0].toUpperCase() + MONTHS[m - 1].slice(1)} ${y}`;
   }
   function monthEntries(ym) {
-    return state.entries.filter((e) => e.date?.slice(0, 7) === ym);
+    const entries = state.entries.filter((e) => e.date?.slice(0, 7) === ym);
+    const sessionIncome = state.clinicSessions
+      .filter((session) => session.month === ym && session.paid && !session.deleted)
+      .map((session) => ({ id: `clinic-${session.id}`, type: "income", amount: Number(session.amount || 0), date: session.date, category: "Atendimentos clínicos", description: "Sessão de paciente", paid: true, pot: "accounts" }));
+    return [...entries, ...sessionIncome];
   }
   function colorFor(category) {
     let hash = 0;
     for (const char of category) hash = (hash * 31 + char.charCodeAt(0)) | 0;
     return COLORS[Math.abs(hash) % COLORS.length];
   }
+  const POT_LABELS = { accounts: "Contas", wishes: "Desejos", future: "Futuro" };
+  const FREQUENCIES = { weekly: "Semanal", biweekly: "Quinzenal", monthly: "Mensal" };
+  const WEEKDAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  function monthSessionDates(patient, ym) {
+    const [year, month] = ym.split("-").map(Number);
+    const monthStart = new Date(year, month - 1, 1, 12),
+      monthEnd = new Date(year, month, 0, 12),
+      start = new Date(`${patient.startDate}T12:00:00`),
+      dates = [];
+    if (!patient.startDate || start > monthEnd) return dates;
+    if (patient.frequency === "monthly") {
+      const day = Math.min(start.getDate(), monthEnd.getDate());
+      const date = new Date(year, month - 1, day, 12);
+      if (date >= monthStart && date >= start) dates.push(date.toISOString().slice(0, 10));
+      return dates;
+    }
+    const interval = patient.frequency === "biweekly" ? 14 : 7,
+      weekday = Number.isInteger(Number(patient.weekday)) ? Number(patient.weekday) : start.getDay();
+    let date = new Date(start);
+    date.setDate(date.getDate() + ((weekday - date.getDay() + 7) % 7));
+    while (date < monthStart) date.setDate(date.getDate() + interval);
+    while (date <= monthEnd) {
+      dates.push(date.toISOString().slice(0, 10));
+      date.setDate(date.getDate() + interval);
+    }
+    return dates;
+  }
+  function ensureClinicSessions(ym) {
+    const regularOccurrences = new Map(),
+      extraSessions = [];
+    for (const session of state.clinicSessions) {
+      if (session.kind === "extra" || session.kind === "emergency") {
+        extraSessions.push(session);
+        continue;
+      }
+      const scheduledDate = session.scheduledDate || session.originalDate || session.date,
+        key = `${session.patientId}|${scheduledDate}`,
+        previous = regularOccurrences.get(key);
+      if (!previous) regularOccurrences.set(key, session);
+      else {
+        const previousMoved = previous.date !== (previous.scheduledDate || previous.originalDate || previous.date),
+          currentMoved = session.date !== scheduledDate;
+        if (currentMoved && !previousMoved) regularOccurrences.set(key, session);
+      }
+    }
+    const cleaned = [...regularOccurrences.values(), ...extraSessions];
+    let changed = cleaned.length !== state.clinicSessions.length;
+    if (changed) state.clinicSessions = cleaned;
+    const existing = new Set(state.clinicSessions.map((session) => `${session.patientId}|${session.scheduledDate || session.originalDate || session.date}`));
+    for (const patient of state.patients) {
+      for (const date of monthSessionDates(patient, ym)) {
+        const key = `${patient.id}|${date}`;
+        if (existing.has(key)) continue;
+        state.clinicSessions.push({ id: uid(), patientId: patient.id, date, scheduledDate: date, month: ym, time: patient.time || "", amount: Number(patient.price || 0), kind: "regular", attendance: "pending", paid: false });
+        existing.add(key);
+        changed = true;
+      }
+    }
+    if (changed) persistLocal();
+  }
+  function renderClinic() {
+    const pct = state.potPercentages,
+      entries = monthEntries(state.activeMonth),
+      income = entries.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+      spent = { accounts: 0, wishes: 0, future: 0 };
+    for (const entry of entries) if (entry.type === "expense" && entry.paid !== false) spent[entry.pot || "accounts"] += Number(entry.amount || 0);
+    for (const [key, share] of Object.entries(pct)) {
+      const allocated = income * Number(share || 0) / 100,
+        available = allocated - spent[key],
+        el = $(`#pot-${key}-value`),
+        bar = $(`#pot-${key}-bar`);
+      $(`#pot-${key}-percent`).textContent = `${share}%`;
+      el.textContent = money(allocated);
+      $(`#pot-${key}-note`).textContent = `${money(available)} disponível${available < 0 ? " · acima do planejado" : ""}`;
+      bar.style.width = `${allocated > 0 ? Math.max(0, Math.min(100, available / allocated * 100)) : 0}%`;
+    }
+    const patients = state.patients,
+      sessions = state.clinicSessions.filter((session) => session.month === state.activeMonth && !session.deleted),
+      search = $("#patient-search").value.trim().toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+      frequencyFilter = $("#patient-frequency-filter").value,
+      sessionFilter = $("#patient-session-filter").value,
+      visiblePatients = patients.filter((patient) => {
+        const patientSessions = sessions.filter((session) => session.patientId === patient.id),
+          searchable = `${patient.name || ""} ${patient.phone || ""}`.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+          searchDigits = search.replace(/\D/g, ""),
+          phoneDigits = String(patient.phone || "").replace(/\D/g, ""),
+          matchesSession = sessionFilter === "all" || patientSessions.some((session) => {
+            if (sessionFilter === "extra") return session.kind === "extra" || session.kind === "emergency";
+            if (sessionFilter === "regular") return session.kind !== "extra" && session.kind !== "emergency";
+            if (sessionFilter === "paid") return session.paid;
+            if (sessionFilter === "unpaid") return !session.paid;
+            return session.attendance === sessionFilter;
+          });
+        return (!search || searchable.includes(search) || Boolean(searchDigits && phoneDigits.includes(searchDigits))) &&
+          (frequencyFilter === "all" || patient.frequency === frequencyFilter) &&
+          matchesSession;
+      }),
+      visiblePatientIds = new Set(visiblePatients.map((patient) => patient.id)),
+      visibleSessions = sessions.filter((session) => visiblePatientIds.has(session.patientId)),
+      paidTotal = visibleSessions.filter((session) => session.paid).reduce((sum, session) => sum + Number(session.amount || 0), 0),
+      seenCount = visibleSessions.filter((session) => session.attendance === "attended").length;
+    $("#patients-month").textContent = monthLabel(state.activeMonth).toLocaleLowerCase("pt-BR");
+    $("#patient-list").innerHTML = visiblePatients.map((patient) => {
+      const visits = sessions.filter((session) => session.patientId === patient.id).sort((a, b) => a.date.localeCompare(b.date)),
+        total = visits.reduce((sum, session) => sum + Number(session.amount || 0), 0),
+        scheduleWeekday = Number.isInteger(Number(patient.weekday)) && patient.weekday !== ""
+          ? Number(patient.weekday)
+          : patient.startDate
+            ? new Date(`${patient.startDate}T12:00:00`).getDay()
+            : visits[0]
+              ? new Date(`${visits[0].date}T12:00:00`).getDay()
+              : null,
+        scheduleTime = patient.time || visits.find((session) => session.time)?.time || "",
+        scheduleLabel = `${scheduleWeekday === null ? "Dia a definir" : WEEKDAYS[scheduleWeekday]}${scheduleTime ? ` · ${scheduleTime}` : ""}`,
+        visitControls = visits.map((session) => `<div class="session-line"><input class="session-datetime" type="datetime-local" value="${session.date}T${(session.time || patient.time || "09:00").slice(0, 5)}" data-session-datetime="${session.id}" aria-label="Data e horário da sessão de ${escapeHtml(patient.name)}" />${session.kind === "extra" || session.kind === "emergency" ? '<span class="session-kind emergency-tag">Extra</span>' : '<span class="session-kind-placeholder" aria-hidden="true"></span>'}<select aria-label="Presença de ${escapeHtml(patient.name)}" data-attendance="${session.id}"><option value="pending" ${session.attendance === "pending" ? "selected" : ""}>A confirmar</option><option value="attended" ${session.attendance === "attended" ? "selected" : ""}>Compareceu</option><option value="missed" ${session.attendance === "missed" ? "selected" : ""}>Faltou</option><option value="rescheduled" ${session.attendance === "rescheduled" ? "selected" : ""}>Remarcou</option></select><label class="session-paid"><input type="checkbox" data-paid="${session.id}" ${session.paid ? "checked" : ""} aria-label="Sessão paga" /> Pago</label><input class="session-amount" type="number" min="0" step="0.01" value="${Number(session.amount || 0)}" data-session-amount="${session.id}" aria-label="Valor da sessão" /><button class="session-delete" type="button" data-session-delete="${session.id}" aria-label="Excluir sessão de ${escapeHtml(patient.name)}" title="Excluir sessão"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3" /></svg></button></div>`).join("") || '<span class="metric-period">Sem sessões neste mês</span>',
+        frequencyClass = patient.frequency || "weekly";
+      return `<tr><td><div class="patient-name-cell"><strong>${escapeHtml(patient.name)}</strong><button class="patient-edit" data-patient-edit="${patient.id}" aria-label="Editar paciente">✎</button></div></td><td>${escapeHtml(patient.phone || "—")}</td><td><span class="frequency-badge ${frequencyClass}">${FREQUENCIES[frequencyClass] || "Semanal"}</span><small class="schedule-sub">${scheduleLabel}</small></td><td><strong>${visits.length}</strong><small class="sessions-sub">${visits.filter((session) => session.attendance === "attended").length} realizadas</small></td><td><strong>${money(patient.price || 0)}</strong><small class="sessions-sub">${money(total)} no mês</small></td><td><div class="session-lines">${visitControls}</div></td><td><strong>${money(visits.filter((session) => session.paid).reduce((sum, session) => sum + Number(session.amount || 0), 0))}</strong></td></tr>`;
+    }).join("");
+    const noPatients = patients.length === 0;
+    $("#patients-empty").classList.toggle("show", visiblePatients.length === 0);
+    $("#patients-empty-title").textContent = noPatients ? "Nenhum paciente cadastrado" : "Nenhum paciente encontrado";
+    $("#patients-empty-copy").textContent = noPatients
+      ? "Cadastre um paciente para acompanhar sessões, pagamentos e frequência."
+      : "Tente alterar ou limpar os filtros para ver pacientes.";
+    $("#empty-patient-add").hidden = !noPatients;
+    $("#patient-list").closest(".table-wrap").querySelector("table").style.display = visiblePatients.length ? "" : "none";
+    $("#patients-totals").innerHTML = `<span>${visiblePatients.length} de ${patients.length} ${patients.length === 1 ? "paciente" : "pacientes"}</span><span>${visibleSessions.length} sessões previstas · ${seenCount} realizadas</span><strong>${money(paidTotal)} recebidos</strong>`;
+  }
   function render() {
+    ensureClinicSessions(state.activeMonth);
     renderPeriod();
     renderSummary();
     renderCharts();
     renderTransactions();
     renderCategories();
+    renderClinic();
   }
   function renderPeriod() {
-    $("#current-period").textContent = monthLabel(state.activeMonth);
+    const [year, month] = state.activeMonth.split("-");
+    $("#current-month-name").textContent = MONTHS[Number(month) - 1][0].toLocaleUpperCase("pt-BR") + MONTHS[Number(month) - 1].slice(1);
+    $("#current-year").textContent = year;
   }
   function renderSummary() {
     const items = monthEntries(state.activeMonth),
@@ -394,7 +557,7 @@
         .filter((e) => e.type === "income")
         .reduce((s, e) => s + e.amount, 0),
       expense = items
-        .filter((e) => e.type === "expense")
+        .filter((e) => e.type === "expense" && e.paid !== false)
         .reduce((s, e) => s + e.amount, 0);
     $("#income-value").textContent = money(income);
     $("#expense-value").textContent = money(expense);
@@ -402,7 +565,7 @@
     $("#income-count").textContent =
       `${items.filter((e) => e.type === "income").length} lançamentos`;
     $("#expense-count").textContent =
-      `${items.filter((e) => e.type === "expense").length} lançamentos`;
+      `${items.filter((e) => e.type === "expense" && e.paid !== false).length} lançamentos`;
   }
   function renderCharts() {
     if (!window.Chart) return;
@@ -423,7 +586,7 @@
       );
       expenses.push(
         entries
-          .filter((e) => e.type === "expense")
+          .filter((e) => e.type === "expense" && e.paid !== false)
           .reduce((s, e) => s + e.amount, 0),
       );
     }
@@ -501,7 +664,7 @@
       },
     });
     const expensesThis = monthEntries(state.activeMonth).filter(
-        (e) => e.type === "expense",
+        (e) => e.type === "expense" && e.paid !== false,
       ),
       groups = {};
     expensesThis.forEach(
@@ -631,6 +794,9 @@
     $("#entry-recurring-until").value = "";
     $("#recurring-end-field").hidden = true;
     $('input[name="type"][value="expense"]').checked = true;
+    $("#entry-paid").checked = true;
+    document.querySelectorAll(".expense-details-field").forEach((field) => field.hidden = false);
+    $("#entry-recurring-label").hidden = true;
     renderCategories("Outros");
     $("#modal-title").textContent = "Nova movimentação";
     openModal("entry-modal");
@@ -645,6 +811,12 @@
     $("#entry-note").value = entry.note || "";
     $("#entry-recurring").checked = Boolean(entry.recurring);
     $("#entry-recurring-until").value = entry.recurringUntil || "";
+    $("#entry-expense-kind").value = entry.expenseKind || "fixed";
+    $("#entry-due-status").value = entry.dueStatus || "current";
+    $("#entry-pot").value = entry.pot || "accounts";
+    $("#entry-paid").checked = entry.paid !== false;
+    document.querySelectorAll(".expense-details-field").forEach((field) => field.hidden = entry.type !== "expense");
+    $("#entry-recurring-label").hidden = entry.type === "expense";
     $("#recurring-end-field").hidden = !entry.recurring;
     document.querySelector(
       `input[name="type"][value="${entry.type}"]`,
@@ -656,9 +828,178 @@
     $("#modal-title").textContent = "Editar movimentação";
     openModal("entry-modal");
   }
+  function preparePatient(patient = null) {
+    $("#patient-form").reset();
+    $("#patient-id").value = patient?.id || "";
+    $("#patient-name").value = patient?.name || "";
+    $("#patient-phone").value = patient?.phone || "";
+    $("#patient-frequency").value = patient?.frequency || "weekly";
+    $("#patient-start").value = patient?.startDate || `${state.activeMonth}-01`;
+    $("#patient-weekday").value = patient?.weekday ?? new Date(`${patient?.startDate || `${state.activeMonth}-01`}T12:00:00`).getDay();
+    $("#patient-time").value = patient?.time || "";
+    $("#patient-price").value = patient?.price ?? "";
+    $("#patient-time-conflict").hidden = true;
+    state.pendingPatientSave = null;
+    $("#patient-modal-title").textContent = patient ? "Editar paciente" : "Novo paciente";
+    openModal("patient-modal");
+  }
+  async function savePatientRecord(patient) {
+    const id = patient.id,
+      previousPatient = state.patients.find((item) => item.id === id);
+    state.patients = state.patients.some((item) => item.id === id) ? state.patients.map((item) => item.id === id ? patient : item) : [...state.patients, patient];
+    if (previousPatient && (previousPatient.frequency !== patient.frequency || previousPatient.startDate !== patient.startDate)) {
+      state.clinicSessions = state.clinicSessions.filter((session) => session.patientId !== id || session.date < state.activeMonth + "-01" || session.paid || session.attendance !== "pending");
+    } else if (previousPatient && previousPatient.price !== patient.price) {
+      for (const session of state.clinicSessions) {
+        if (session.patientId === id && session.date >= state.activeMonth + "-01" && !session.paid && session.attendance === "pending") session.amount = patient.price;
+      }
+    }
+    state.pendingPatientSave = null;
+    $("#patient-time-conflict").hidden = true;
+    closeModal("patient-modal");
+    await saveData("Paciente salvo.");
+  }
+  async function commitSessionDateTime(change) {
+    const session = state.clinicSessions.find((item) => item.id === change.sessionId);
+    if (!session) return;
+    session.scheduledDate ||= session.originalDate || session.date;
+    session.originalDate ||= session.scheduledDate;
+    session.date = change.date;
+    session.time = change.time;
+    session.month = change.date.slice(0, 7);
+    session.attendance = "rescheduled";
+    state.pendingSessionChange = null;
+    closeModal("session-conflict-modal");
+    await saveData("Sessão remarcada.");
+  }
   function bind() {
     bindSectionNavigation();
+    bindPeriodWidget();
     $("#new-entry").addEventListener("click", prepareNew);
+    $("#new-patient").addEventListener("click", () => preparePatient());
+    $("#empty-patient-add").addEventListener("click", () => preparePatient());
+    $("#new-emergency-session").addEventListener("click", () => {
+      if (!state.patients.length) {
+        toast("Cadastre um paciente antes de adicionar uma sessão extra.");
+        return;
+      }
+      $("#emergency-session-form").reset();
+      $("#emergency-patient").innerHTML = state.patients.map((patient) => `<option value="${escapeHtml(patient.id)}">${escapeHtml(patient.name)}</option>`).join("");
+      $("#emergency-date").value = `${new Date().toLocaleDateString("sv-SE")}T${(state.patients[0].time || "09:00").slice(0, 5)}`;
+      $("#emergency-amount").value = state.patients[0].price || "";
+      openModal("emergency-session-modal");
+    });
+    $("#emergency-patient").addEventListener("change", () => {
+      const patient = state.patients.find((item) => item.id === $("#emergency-patient").value);
+      $("#emergency-amount").value = patient?.price || "";
+    });
+    $("#emergency-session-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const patient = state.patients.find((item) => item.id === $("#emergency-patient").value);
+      if (!patient) return;
+      const [date, time] = $("#emergency-date").value.split("T");
+      state.clinicSessions.push({ id: uid(), patientId: patient.id, date, month: date.slice(0, 7), time, amount: Number($("#emergency-amount").value), kind: "extra", attendance: "pending", paid: false, note: $("#emergency-note").value.trim() });
+      closeModal("emergency-session-modal");
+      await saveData("Sessão extra de emergência adicionada.");
+    });
+    $("#patient-search").addEventListener("input", renderClinic);
+    ["#patient-frequency-filter", "#patient-session-filter"].forEach((selector) => $(selector).addEventListener("change", renderClinic));
+    $("#clear-patient-filters").addEventListener("click", () => {
+      $("#patient-search").value = "";
+      $("#patient-frequency-filter").value = "all";
+      $("#patient-session-filter").value = "all";
+      renderClinic();
+    });
+    $("#patient-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const id = $("#patient-id").value || uid(),
+        patient = { id, name: $("#patient-name").value.trim(), phone: $("#patient-phone").value.trim(), frequency: $("#patient-frequency").value, startDate: $("#patient-start").value, weekday: Number($("#patient-weekday").value), time: $("#patient-time").value, price: Number($("#patient-price").value) },
+        conflicts = state.patients.filter((item) => item.id !== id && Number(item.weekday) === patient.weekday && item.time && item.time === patient.time);
+      if (conflicts.length) {
+        state.pendingPatientSave = patient;
+        $("#patient-time-conflict-copy").textContent = `Já existe atendimento neste dia e horário com ${conflicts.map((item) => item.name).join(", ")}. Você pode salvar mesmo assim ou voltar e escolher outro horário.`;
+        $("#patient-time-conflict").hidden = false;
+        return;
+      }
+      await savePatientRecord(patient);
+    });
+    $("#save-patient-with-conflict").addEventListener("click", async () => {
+      if (state.pendingPatientSave) await savePatientRecord(state.pendingPatientSave);
+    });
+    $("#patient-list").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-patient-edit]");
+      if (button) preparePatient(state.patients.find((patient) => patient.id === button.dataset.patientEdit));
+      const deleteButton = event.target.closest("[data-session-delete]");
+      if (deleteButton) {
+        const session = state.clinicSessions.find((item) => item.id === deleteButton.dataset.sessionDelete),
+          patient = state.patients.find((item) => item.id === session?.patientId);
+        if (!session) return;
+        state.pendingSessionDelete = session.id;
+        $("#delete-session-copy").textContent = `Excluir a sessão de ${patient?.name || "este paciente"} do dia ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${session.date}T12:00:00`))}? Essa ação não pode ser desfeita.`;
+        openModal("delete-session-modal");
+      }
+    });
+    $("#confirm-delete-session").addEventListener("click", async () => {
+      const session = state.clinicSessions.find((item) => item.id === state.pendingSessionDelete);
+      if (!session) return;
+      session.deleted = true;
+      state.pendingSessionDelete = "";
+      closeModal("delete-session-modal");
+      await saveData("Sessão excluída.");
+    });
+    $("#patient-list").addEventListener("change", async (event) => {
+      const target = event.target,
+        sessionId = target.dataset.paid || target.dataset.attendance || target.dataset.sessionAmount;
+      if (!sessionId) return;
+      const session = state.clinicSessions.find((item) => item.id === sessionId);
+      if (!session) return;
+      if (target.dataset.paid) session.paid = target.checked;
+      if (target.dataset.attendance) session.attendance = target.value;
+      if (target.dataset.sessionAmount) session.amount = Math.max(0, Number(target.value || 0));
+      await saveData("Sessão atualizada.");
+    });
+    $("#patient-list").addEventListener("focusout", async (event) => {
+      const target = event.target;
+      if (!target.matches("[data-session-datetime]") || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(target.value)) return;
+      const session = state.clinicSessions.find((item) => item.id === target.dataset.sessionDatetime),
+        [newDate, newTime] = target.value.split("T");
+      if (!session || (session.date === newDate && (session.time || "") === newTime)) return;
+      const conflicts = state.clinicSessions.filter((item) => {
+        if (item.deleted || item.id === session.id || item.patientId === session.patientId || item.date !== newDate) return false;
+        const otherPatient = state.patients.find((patient) => patient.id === item.patientId);
+        return (item.time || otherPatient?.time || "") === newTime;
+      });
+      if (conflicts.length) {
+        const names = [...new Set(conflicts.map((item) => state.patients.find((patient) => patient.id === item.patientId)?.name || "Outro paciente"))];
+        state.pendingSessionChange = { sessionId: session.id, date: newDate, time: newTime };
+        $("#session-conflict-copy").textContent = `Já há sessão de ${names.join(", ")} em ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${newDate}T12:00:00`))} às ${newTime}. Você pode voltar e escolher outro horário ou salvar mesmo assim.`;
+        openModal("session-conflict-modal");
+        return;
+      }
+      await commitSessionDateTime({ sessionId: session.id, date: newDate, time: newTime });
+    });
+    $("#cancel-session-conflict").addEventListener("click", () => {
+      state.pendingSessionChange = null;
+      closeModal("session-conflict-modal");
+      renderClinic();
+    });
+    $("#confirm-session-conflict").addEventListener("click", async () => {
+      if (state.pendingSessionChange) await commitSessionDateTime(state.pendingSessionChange);
+    });
+    $("#edit-pot-percentages").addEventListener("click", () => {
+      for (const key of Object.keys(POT_LABELS)) $(`#pot-${key}-input`).value = state.potPercentages[key];
+      openModal("pots-modal");
+    });
+    $("#save-pot-percentages").addEventListener("click", async () => {
+      const values = Object.fromEntries(Object.keys(POT_LABELS).map((key) => [key, Number($(`#pot-${key}-input`).value)]));
+      if (Object.values(values).some((value) => !Number.isFinite(value) || value < 0) || Object.values(values).reduce((sum, value) => sum + value, 0) !== 100) {
+        toast("A divisão dos potes precisa somar exatamente 100%.");
+        return;
+      }
+      state.potPercentages = values;
+      closeModal("pots-modal");
+      await saveData("Divisão dos potes atualizada.");
+    });
     $("#privacy-toggle").addEventListener("click", () => {
       const hidden = document.body.classList.toggle("values-hidden"),
         button = $("#privacy-toggle");
@@ -674,8 +1015,11 @@
     });
     $("#entry-recurring").addEventListener("change", (event) => {
       $("#recurring-end-field").hidden = !event.target.checked;
-      if (event.target.checked)
-        $("#entry-date").value = `${$("#entry-date").value.slice(0, 7)}-01`;
+    });
+    $("#entry-expense-kind").addEventListener("change", (event) => {
+      const recurring = event.target.value === "recurring";
+      $("#entry-recurring").checked = recurring;
+      $("#recurring-end-field").hidden = !recurring;
     });
     $("#empty-add").addEventListener("click", prepareNew);
     $("#prev-month").addEventListener("click", () => shiftMonth(-1));
@@ -685,6 +1029,10 @@
       input.addEventListener("change", () => {
         const current = $("#entry-category").value;
         renderCategories(current);
+        const isExpense = document.querySelector('input[name="type"]:checked').value === "expense";
+        document.querySelectorAll(".expense-details-field").forEach((field) => field.hidden = !isExpense);
+        $("#entry-recurring-label").hidden = isExpense;
+        if (isExpense) $("#recurring-end-field").hidden = $("#entry-expense-kind").value !== "recurring";
       }),
     );
     $("#entry-form").addEventListener("submit", async (event) => {
@@ -710,9 +1058,14 @@
         category,
         note: $("#entry-note").value.trim(),
         recurring: $("#entry-recurring").checked,
+        recurrenceDay: Number($("#entry-date").value.slice(8, 10)),
         recurringUntil: $("#entry-recurring").checked
           ? $("#entry-recurring-until").value
           : "",
+        expenseKind: document.querySelector('input[name="type"]:checked').value === "expense" ? $("#entry-expense-kind").value : "",
+        dueStatus: document.querySelector('input[name="type"]:checked').value === "expense" ? $("#entry-due-status").value : "",
+        pot: document.querySelector('input[name="type"]:checked').value === "expense" ? $("#entry-pot").value : "",
+        paid: document.querySelector('input[name="type"]:checked').value === "expense" ? $("#entry-paid").checked : true,
       };
       if (
         entry.recurring &&
@@ -811,20 +1164,78 @@
           .forEach((el) => closeModal(el.id));
     });
   }
-  function bindSectionNavigation() {
-    const overview = $('.side-nav a[href="#inicio"]'),
-      movements = $('.side-nav a[href="#movimentacoes"]'),
-      section = $("#movimentacoes");
-    if (!overview || !movements || !section) return;
-    const setActive = (isMovements) => {
-      overview.classList.toggle("active", !isMovements);
-      movements.classList.toggle("active", isMovements);
+  function bindPeriodWidget() {
+    const widget = $("#period-widget"),
+      handle = $("#period-drag-handle"),
+      reopen = $("#reopen-period-widget");
+    let saved = {};
+    try {
+      saved = JSON.parse(localStorage.getItem(PERIOD_WIDGET_KEY) || "{}");
+    } catch {}
+    if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+      widget.style.left = `${saved.left}px`;
+      widget.style.top = `${saved.top}px`;
+      widget.style.right = "auto";
+    }
+    widget.hidden = Boolean(saved.closed);
+    reopen.hidden = !saved.closed;
+    if (saved.closed) reopen.textContent = `Mês: ${monthLabel(state.activeMonth)}`;
+    const savePosition = () => {
+      const rect = widget.getBoundingClientRect();
+      localStorage.setItem(PERIOD_WIDGET_KEY, JSON.stringify({ left: rect.left, top: rect.top, closed: widget.hidden }));
     };
+    $("#close-period-widget").addEventListener("click", () => {
+      const rect = widget.getBoundingClientRect();
+      widget.hidden = true;
+      reopen.hidden = false;
+      reopen.textContent = `Mês: ${monthLabel(state.activeMonth)}`;
+      localStorage.setItem(PERIOD_WIDGET_KEY, JSON.stringify({ left: rect.left, top: rect.top, closed: true }));
+    });
+    reopen.addEventListener("click", () => {
+      widget.hidden = false;
+      reopen.hidden = true;
+      savePosition();
+    });
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.target.closest("button")) return;
+      const rect = widget.getBoundingClientRect();
+      handle.setPointerCapture(event.pointerId);
+      handle.dataset.dragging = "true";
+      handle.dataset.pointerX = String(event.clientX);
+      handle.dataset.pointerY = String(event.clientY);
+      handle.dataset.left = String(rect.left);
+      handle.dataset.top = String(rect.top);
+    });
+    handle.addEventListener("pointermove", (event) => {
+      if (handle.dataset.dragging !== "true") return;
+      const left = Math.max(8, Math.min(window.innerWidth - widget.offsetWidth - 8, Number(handle.dataset.left) + event.clientX - Number(handle.dataset.pointerX))),
+        top = Math.max(8, Math.min(window.innerHeight - widget.offsetHeight - 8, Number(handle.dataset.top) + event.clientY - Number(handle.dataset.pointerY)));
+      widget.style.left = `${left}px`;
+      widget.style.top = `${top}px`;
+      widget.style.right = "auto";
+    });
+    const stopDragging = () => {
+      if (handle.dataset.dragging !== "true") return;
+      handle.dataset.dragging = "false";
+      savePosition();
+    };
+    handle.addEventListener("pointerup", stopDragging);
+    handle.addEventListener("pointercancel", stopDragging);
+  }
+  function bindSectionNavigation() {
+    const links = [...document.querySelectorAll('.side-nav a[href^="#"]')],
+      sections = links.map((link) => ({ link, section: $(link.getAttribute("href")) })).filter((item) => item.section);
+    if (!sections.length) return;
+    const setActive = (link) => links.forEach((item) => item.classList.toggle("active", item === link));
     let queued = false;
     const update = () => {
       queued = false;
-      const rect = section.getBoundingClientRect();
-      setActive(rect.top < window.innerHeight * 0.58 && rect.bottom > 145);
+      const visible = sections.filter(({ section }) => {
+        const rect = section.getBoundingClientRect();
+        return rect.top < window.innerHeight * 0.58 && rect.bottom > 145;
+      });
+      const current = visible[visible.length - 1];
+      if (current) setActive(current.link);
     };
     window.addEventListener(
       "scroll",
@@ -837,8 +1248,7 @@
       { passive: true },
     );
     window.addEventListener("resize", update);
-    overview.addEventListener("click", () => setActive(false));
-    movements.addEventListener("click", () => setActive(true));
+    sections.forEach(({ link }) => link.addEventListener("click", () => setActive(link)));
     update();
   }
   function shiftMonth(delta) {
@@ -907,6 +1317,9 @@
     // Remove só os dados locais. As credenciais do JSONBin ficam intactas.
     localStorage.removeItem(STORAGE_KEY);
     state.entries = [];
+    state.patients = [];
+    state.clinicSessions = [];
+    state.potPercentages = { accounts: 50, wishes: 30, future: 20 };
     state.categories = [...DEFAULT_CATEGORIES];
     state.importedThrough = {};
     try {
@@ -915,6 +1328,16 @@
       if (!Array.isArray(data.entries))
         throw Error("O JSONBin não contém uma lista de lançamentos válida.");
       state.entries = data.entries;
+      state.patients = Array.isArray(data.patients) ? data.patients : [];
+      state.clinicSessions = Array.isArray(data.clinicSessions)
+        ? data.clinicSessions
+        : [];
+      state.potPercentages = {
+        accounts: 50,
+        wishes: 30,
+        future: 20,
+        ...(data.potPercentages || {}),
+      };
       state.categories = mergeCategories(data.categories || []);
       state.importedThrough = mergeStatementCheckpoints(
         data.importedThrough,

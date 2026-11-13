@@ -37,6 +37,9 @@
           <a class="nav-link" href="#movimentacoes"
             ><span class="nav-icon">↕</span>Movimentações</a
           >
+          <a class="nav-link" href="#clinica"
+            ><span class="nav-icon">✳</span>Clínica</a
+          >
         </nav>
         <div class="sidebar-bottom">
           <div class="sync-card">
@@ -95,13 +98,15 @@
             </h1>
             <p>Acompanhe suas entradas e despesas com clareza.</p>
           </div>
-          <div class="period-control">
-            <button id="prev-month" aria-label="Mês anterior">‹</button>
-            <div>
-              <small>VISUALIZANDO</small><strong id="current-period"></strong>
+          <div class="period-control period-control-large" id="period-widget">
+            <div class="period-widget-heading" id="period-drag-handle"><small>MÊS EM TELA</small><button id="close-period-widget" type="button" aria-label="Ocultar mês">×</button></div>
+            <div class="period-widget-controls">
+              <button id="prev-month" aria-label="Mês anterior">‹</button>
+              <strong id="current-period"><span id="current-month-name"></span><small id="current-year"></small></strong>
+              <button id="next-month" aria-label="Próximo mês">›</button>
             </div>
-            <button id="next-month" aria-label="Próximo mês">›</button>
           </div>
+          <button class="period-widget-reopen" id="reopen-period-widget" type="button" hidden aria-label="Mostrar mês atual"></button>
         </section>
         <div class="summary-tools">
           <button
@@ -270,6 +275,58 @@
             </button>
           </div>
         </section>
+        <section class="clinic-section" id="clinica">
+          <div class="page-heading clinic-heading">
+            <div>
+              <div class="eyebrow"><span class="eyebrow-dot"></span> ROTINA PROFISSIONAL</div>
+              <h1>Clínica em <span>equilíbrio.</span></h1>
+              <p>Pacientes, sessões e seus potes no mesmo controle financeiro.</p>
+            </div>
+            <button class="primary-button" id="new-patient"><span>＋</span> Novo paciente</button>
+          </div>
+          <div class="pot-section-heading"><div><h2>Seus potes</h2><p>Distribuição das entradas e saldo disponível no mês</p></div><button class="text-button" id="edit-pot-percentages">⚙ Ajustar divisão</button></div>
+          <section class="summary-grid pot-summary" aria-label="Resumo dos potes">
+            <article class="summary-card pot-card">
+              <div class="card-top"><span>Contas</span><span class="pot-percent" id="pot-accounts-percent">50%</span></div>
+              <div class="metric" id="pot-accounts-value">R$ 0,00</div>
+              <div class="pot-track"><i id="pot-accounts-bar"></i></div>
+              <div class="card-foot"><span class="metric-caption" id="pot-accounts-note">R$ 0,00 disponível</span></div>
+            </article>
+            <article class="summary-card pot-card">
+              <div class="card-top"><span>Desejos</span><span class="pot-percent" id="pot-wishes-percent">30%</span></div>
+              <div class="metric" id="pot-wishes-value">R$ 0,00</div>
+              <div class="pot-track"><i id="pot-wishes-bar"></i></div>
+              <div class="card-foot"><span class="metric-caption" id="pot-wishes-note">R$ 0,00 disponível</span></div>
+            </article>
+            <article class="summary-card pot-card">
+              <div class="card-top"><span>Futuro</span><span class="pot-percent" id="pot-future-percent">20%</span></div>
+              <div class="metric" id="pot-future-value">R$ 0,00</div>
+              <div class="pot-track"><i id="pot-future-bar"></i></div>
+              <div class="card-foot"><span class="metric-caption" id="pot-future-note">R$ 0,00 disponível</span></div>
+            </article>
+          </section>
+          <article class="panel patients-panel">
+            <div class="panel-heading transactions-heading">
+              <div><div class="patients-title-row"><span class="patients-brain" aria-hidden="true">🧠</span><h2>Pacientes e sessões</h2></div><p id="patients-caption">Sessões previstas e pagamentos de <span id="patients-month"></span></p></div>
+              <button class="secondary-button" id="new-emergency-session" type="button">＋ Adicionar sessão extra</button>
+            </div>
+            <div class="patient-filters" aria-label="Filtros de pacientes">
+              <label class="patient-search"><span>⌕</span><input id="patient-search" type="search" placeholder="Buscar por nome ou telefone" aria-label="Buscar pacientes por nome ou telefone" /></label>
+              <select id="patient-frequency-filter" aria-label="Filtrar por frequência"><option value="all">Todas as frequências</option><option value="weekly">Semanal</option><option value="biweekly">Quinzenal</option><option value="monthly">Mensal</option></select>
+              <select id="patient-session-filter" aria-label="Filtrar pelas sessões"><option value="all">Todas as sessões</option><option value="extra">Sessões extras</option><option value="regular">Sessões regulares</option><option value="paid">Com pagamento</option><option value="unpaid">Pagamento pendente</option><option value="attended">Compareceu</option><option value="missed">Faltou</option><option value="rescheduled">Remarcou</option><option value="pending">A confirmar</option></select>
+              <button class="text-button" id="clear-patient-filters" type="button">Limpar filtros</button>
+            </div>
+            <div class="table-wrap">
+              <table class="patients-table">
+                <thead><tr><th>PACIENTE</th><th>TELEFONE</th><th>FREQUÊNCIA</th><th>SESSÕES</th><th>VALOR / TOTAL</th><th>PRESENÇA</th><th>PAGO</th></tr></thead>
+                <tbody id="patient-list"></tbody>
+              </table>
+              <div class="empty-state" id="patients-empty"><div class="empty-icon">✳</div><strong id="patients-empty-title">Nenhum paciente cadastrado</strong><span id="patients-empty-copy">Cadastre um paciente para acompanhar sessões, pagamentos e frequência.</span><button class="text-button" id="empty-patient-add">＋ Novo paciente</button></div>
+            </div>
+            <div class="patients-footer" id="patients-totals"></div>
+          </article>
+        </section>
+
         <footer class="page-footer">
           <span>Feito para deixar sua vida financeira mais leve.</span
           ><span>Seu controle, do seu jeito <b>✳</b></span>
@@ -353,9 +410,15 @@
               maxlength="140"
               placeholder="Algum detalhe que queira lembrar?"
           /></label>
-          <label class="recurring-toggle"
+          <div class="field-row expense-details-field">
+            <label class="field-label">Tipo de conta<select id="entry-expense-kind"><option value="fixed">Fixa</option><option value="installment">Parcelada</option><option value="recurring">Recorrente</option><option value="one-time">Única</option><option value="emergency">Emergência</option></select></label>
+            <label class="field-label">Vencimento<select id="entry-due-status"><option value="current">No prazo</option><option value="early">Adiantado</option><option value="late">Atrasado</option></select></label>
+          </div>
+          <label class="field-label expense-details-field">Pote<select id="entry-pot"><option value="accounts">Contas</option><option value="wishes">Desejos</option><option value="future">Futuro</option></select></label>
+          <label class="recurring-toggle expense-details-field"><input id="entry-paid" type="checkbox" checked /><span>Já foi pago</span></label>
+          <label class="recurring-toggle" id="entry-recurring-label"
             ><input id="entry-recurring" type="checkbox" /><span
-              >Repetir todo mês, no dia 1</span
+              >Repetir todo mês na mesma data</span
             ></label
           >
           <label
@@ -377,6 +440,55 @@
             </button>
           </div>
         </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="patient-modal" aria-hidden="true">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="patient-modal-title">
+        <div class="modal-heading"><div><div class="eyebrow">AGENDA DA CLÍNICA</div><h2 id="patient-modal-title">Novo paciente</h2></div><button class="close-button" data-close="patient-modal" aria-label="Fechar">×</button></div>
+        <form id="patient-form">
+          <input type="hidden" id="patient-id" />
+          <label class="field-label">Nome do paciente<input id="patient-name" required maxlength="80" placeholder="Nome" /></label>
+          <div class="field-row">
+            <label class="field-label">Telefone<input id="patient-phone" type="tel" maxlength="30" placeholder="(00) 00000-0000" /></label>
+            <label class="field-label">Frequência<select id="patient-frequency"><option value="weekly">Semanal</option><option value="biweekly">Quinzenal</option><option value="monthly">Mensal</option></select></label>
+          </div>
+          <div class="field-row">
+            <label class="field-label">Início do acompanhamento<input id="patient-start" type="date" required /></label>
+            <label class="field-label">Dia da sessão<select id="patient-weekday"><option value="0">Domingo</option><option value="1">Segunda-feira</option><option value="2">Terça-feira</option><option value="3">Quarta-feira</option><option value="4">Quinta-feira</option><option value="5">Sexta-feira</option><option value="6">Sábado</option></select></label>
+          </div>
+          <div class="field-row"><label class="field-label">Horário da sessão<input id="patient-time" type="time" required /></label><label class="field-label">Valor por sessão (R$)<input id="patient-price" type="number" min="0.01" step="0.01" required placeholder="0,00" /></label></div>
+          <div class="patient-conflict-warning" id="patient-time-conflict" hidden><p id="patient-time-conflict-copy"></p><button class="primary-button" id="save-patient-with-conflict" type="button">Salvar mesmo assim</button></div>
+          <div class="modal-actions"><button class="secondary-button" type="button" data-close="patient-modal">Cancelar</button><button class="primary-button" type="submit">Salvar paciente</button></div>
+        </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="emergency-session-modal" aria-hidden="true">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="emergency-session-title">
+        <div class="modal-heading"><div><div class="eyebrow">ATENDIMENTO EXTRA</div><h2 id="emergency-session-title">Adicionar sessão extra</h2></div><button class="close-button" data-close="emergency-session-modal" aria-label="Fechar">×</button></div>
+        <form id="emergency-session-form">
+          <label class="field-label">Paciente<select id="emergency-patient" required></select></label>
+          <div class="field-row"><label class="field-label">Data e horário<input id="emergency-date" type="datetime-local" required /></label><label class="field-label">Valor (R$)<input id="emergency-amount" type="number" min="0.01" step="0.01" required /></label></div>
+          <label class="field-label">Observação <span class="optional">opcional</span><input id="emergency-note" maxlength="140" placeholder="Detalhe sobre o atendimento extra" /></label>
+          <div class="modal-actions"><button class="secondary-button" type="button" data-close="emergency-session-modal">Cancelar</button><button class="primary-button" type="submit">Adicionar sessão</button></div>
+        </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="delete-session-modal" aria-hidden="true">
+      <section class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-session-title">
+        <div class="modal-heading"><div><div class="eyebrow">CONFIRMAR AÇÃO</div><h2 id="delete-session-title">Excluir sessão?</h2></div><button class="close-button" data-close="delete-session-modal" aria-label="Fechar">×</button></div>
+        <p class="settings-copy" id="delete-session-copy">A sessão será removida da agenda.</p>
+        <div class="modal-actions"><button class="secondary-button" type="button" data-close="delete-session-modal">Cancelar</button><button class="primary-button delete-confirm-button" id="confirm-delete-session" type="button">Excluir sessão</button></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="session-conflict-modal" aria-hidden="true">
+      <section class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="session-conflict-title">
+        <div class="modal-heading"><div><div class="eyebrow">CONFLITO DE HORÁRIO</div><h2 id="session-conflict-title">Já existe uma sessão nesse horário</h2></div><button class="close-button" data-close="session-conflict-modal" aria-label="Fechar">×</button></div>
+        <p class="settings-copy" id="session-conflict-copy"></p>
+        <div class="modal-actions"><button class="secondary-button" id="cancel-session-conflict" type="button">Voltar e ajustar</button><button class="primary-button" id="confirm-session-conflict" type="button">Salvar mesmo assim</button></div>
       </section>
     </div>
 
@@ -432,6 +544,14 @@
             Conectar JSONBin
           </button>
         </div>
+      </section>
+    </div>
+    <div class="modal-backdrop" id="pots-modal" aria-hidden="true">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="pots-title">
+        <div class="modal-heading"><div><div class="eyebrow">DISTRIBUIÇÃO AUTOMÁTICA</div><h2 id="pots-title">Divisão dos potes</h2></div><button class="close-button" data-close="pots-modal" aria-label="Fechar">×</button></div>
+        <p class="settings-copy">Defina como as entradas do mês serão distribuídas. Os percentuais precisam somar 100%.</p>
+        <div class="field-row"><label class="field-label">Contas (%)<input id="pot-accounts-input" type="number" min="0" max="100" step="1" /></label><label class="field-label">Desejos (%)<input id="pot-wishes-input" type="number" min="0" max="100" step="1" /></label><label class="field-label">Futuro (%)<input id="pot-future-input" type="number" min="0" max="100" step="1" /></label></div>
+        <div class="modal-actions"><button class="secondary-button" type="button" data-close="pots-modal">Cancelar</button><button class="primary-button" id="save-pot-percentages" type="button">Salvar divisão</button></div>
       </section>
     </div>
     <div class="toast" id="toast" role="status"></div>
