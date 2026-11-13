@@ -38,12 +38,14 @@ No formulário, as categorias sugeridas acompanham o tipo selecionado: despesas 
 ## Recursos
 
 - Use **Esconder valores** acima do resumo para ocultar os valores financeiros na tela.
+- Em **Movimentações**, escolha entre tabela e cartões no computador; a escolha fica salva neste dispositivo. No celular, a visualização em cartões é automática.
 - No cadastro de uma movimentação, marque **Repetir todo mês, no dia 1** para criar os lançamentos dos meses seguintes automaticamente. O app completa meses em falta ao abrir e evita duplicar lançamentos. A data final é opcional; sem ela, a recorrência continua até ser desativada ou o lançamento recorrente ser excluído.
 
 ## Clínica
 
 - A área **Clínica** permite cadastrar pacientes com telefone, frequência de sessões semanal, quinzenal ou mensal, frequência de pagamento, data de início e valor por sessão. As sessões previstas são calculadas automaticamente para o mês selecionado, incluindo meses com quatro ou cinco sessões semanais. Uma sessão não paga fica destacada como vencida após o prazo de pagamento do paciente: 7 dias, 15 dias ou até o mesmo dia do mês seguinte (limitado ao último dia do mês quando necessário). Sessões marcadas como falta não geram cobrança vencida.
 - Use **Somente vencidas** para listar sessões não pagas vencidas em qualquer mês e ver o total em aberto. Desmarque para voltar à agenda do mês selecionado.
+- No computador, alterne entre a tabela de pacientes e a visualização em cartões. A escolha fica salva neste dispositivo; no celular, os pacientes aparecem em cartões automaticamente.
 - Para cada sessão, registre presença (a confirmar, compareceu, faltou ou remarcou), valor e pagamento. Sessões pagas entram como receita da categoria **Atendimentos clínicos** no resumo e no fluxo financeiro, separadas dos lançamentos de salário.
 - As despesas podem ser classificadas como fixas, parceladas, recorrentes, únicas ou emergenciais, com vencimento no prazo, adiantado ou atrasado. Marque **Já foi pago** para contar a despesa como saída e escolha o pote que ela reduz.
 - A divisão inicial dos potes é **Contas 50%**, **Desejos 30%** e **Futuro 20%**. Ela pode ser ajustada; as entradas do mês são distribuídas pelas porcentagens e as despesas pagas reduzem o saldo disponível do pote escolhido.

@@ -3432,8 +3432,302 @@ td {
   text-align: center;
   white-space: nowrap;
 }
+.session-accordion > summary { display: none; }
 @media (max-width: 600px) {
   .overdue-filter { flex: 1 1 auto; }
+}
+
+/* Small-screen layout: cards, readable controls and an in-flow month switcher. */
+@media (max-width: 600px) {
+  html { scroll-padding-bottom: 84px; }
+  body { font-size: 15px; }
+  .main-content {
+    padding: 0 14px calc(88px + env(safe-area-inset-bottom));
+  }
+  .topbar { min-height: 62px; padding: 8px 0; }
+  .top-actions { gap: 8px; }
+  .top-actions .primary-button {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  .icon-button { width: 42px; height: 42px; }
+  .page-heading { padding: 22px 0 16px; gap: 8px; }
+  .page-heading { display: flex; flex-direction: column; align-items: stretch; }
+  .page-heading h1 { font-size: clamp(31px, 8vw, 38px); line-height: 1.1; }
+  .page-heading p,
+  .panel-heading p,
+  .pot-section-heading p { font-size: 14px; line-height: 1.45; }
+  .period-control-large {
+    position: fixed;
+    top: 78px;
+    right: 10px;
+    bottom: auto;
+    left: auto;
+    display: block;
+    width: min(290px, calc(100vw - 20px));
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 14px;
+    box-shadow: 0 5px 16px #20352c12;
+  }
+  .period-widget-heading { margin-bottom: 4px; cursor: move; }
+  .period-widget-heading small { font-size: 11px; }
+  .period-widget-heading button { display: grid; width: 32px; height: 32px; }
+  .period-widget-controls { gap: 8px; }
+  .period-widget-controls > button {
+    flex-basis: 48px;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    font-size: 32px;
+  }
+  .period-widget-controls strong { font-size: 25px; }
+  .period-widget-controls strong small { font-size: 15px; }
+  .period-widget-reopen:not([hidden]) {
+    display: flex !important;
+    align-items: center;
+    top: 78px;
+    right: 10px;
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .summary-grid { gap: 10px; }
+  .summary-card { min-height: 112px; padding: 14px; }
+  .card-top { font-size: 13px; }
+  .metric { font-size: 21px; }
+  .summary-card:not(.balance-card) .metric { font-size: clamp(18px, 5.5vw, 23px); }
+  .balance-card .metric { font-size: 26px; }
+  .card-foot,
+  .metric-caption,
+  .trend-pill { font-size: 12px; }
+  .charts-grid { gap: 12px; margin-top: 12px; }
+  .panel { padding: 16px 14px; border-radius: 16px; }
+  .panel-heading h2 { font-size: 17px; }
+  .chart-area { height: 210px; }
+  .donut-wrap { height: 190px; }
+  .category-legend { font-size: 12px; }
+  .transactions-panel { padding: 16px 14px 0; }
+  .transactions-heading { gap: 12px; }
+  .filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .filter-control {
+    height: 44px;
+    min-width: 0;
+    padding: 0 9px;
+    justify-content: flex-start;
+  }
+  .filter-control select,
+  .filter-control input {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    font-size: 14px;
+  }
+  .filters > .text-button {
+    min-height: 40px;
+    margin: 0;
+    justify-self: end;
+    font-size: 14px;
+  }
+  .transactions-panel .table-wrap {
+    overflow: visible;
+    min-height: 0;
+    margin: 0;
+  }
+  .transactions-panel table,
+  .patients-table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+    white-space: normal;
+  }
+  .transactions-panel thead,
+  .patients-table thead { display: none; }
+  .transactions-panel tbody {
+    display: grid;
+    gap: 10px;
+  }
+  .transaction-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 13px;
+    border: 1px solid #e9e5dc;
+    border-radius: 13px;
+    background: #fffdf9;
+  }
+  .transaction-row td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    font-size: 14px;
+  }
+  .transaction-description { grid-column: 1; grid-row: 1; }
+  .transaction-actions { grid-column: 2; grid-row: 1; align-self: start; }
+  .transaction-row td[data-label]::before {
+    display: block;
+    margin-bottom: 3px;
+    color: #88948b;
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .transaction-row td[data-label="Categoria"] { grid-column: 1; grid-row: 2; }
+  .transaction-row td[data-label="Data"] { grid-column: 2; grid-row: 2; text-align: right; }
+  .transaction-row td[data-label="Tipo"] { grid-column: 1; grid-row: 3; }
+  .transaction-row td[data-label="Valor"] { grid-column: 2; grid-row: 3; text-align: right; font-weight: 700; }
+  .description-cell { align-items: flex-start; gap: 9px; font-size: 15px; line-height: 1.35; }
+  .description-cell .row-icon { flex: 0 0 30px; width: 30px; height: 30px; }
+  .category-tag { max-width: 100%; font-size: 12px; white-space: normal; }
+  .type-tag { font-size: 12px; }
+  .row-actions { gap: 6px; }
+  .row-actions button { width: 38px; height: 38px; }
+  .table-footer { padding: 12px 0; font-size: 13px; }
+  .clinic-section { margin-top: 48px; scroll-margin-top: 12px; }
+  .clinic-heading { display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
+  .clinic-heading h1 { font-size: clamp(30px, 8vw, 36px); }
+  .clinic-heading .primary-button { align-self: flex-start; min-height: 44px; font-size: 14px; }
+  .pot-section-heading { align-items: flex-start; gap: 8px; }
+  .pot-section-heading h2 { font-size: 19px; }
+  .pot-section-heading .text-button { min-height: 40px; font-size: 13px; white-space: nowrap; }
+  .pot-summary { grid-template-columns: minmax(0, 1fr); }
+  .pot-card { min-height: 0; }
+  .pot-card .metric { font-size: 27px; }
+  .patients-title-row h2 { font-size: 19px; }
+  .patients-brain { font-size: 29px; }
+  .patients-panel .panel-heading p { font-size: 13px; }
+  .patients-panel .secondary-button { min-height: 42px; align-self: flex-start; font-size: 13px; }
+  .patient-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 0 14px 14px; }
+  .patient-search { grid-column: 1 / -1; min-width: 0; min-height: 46px; }
+  .patient-search input { font-size: 16px; }
+  .patient-filters select { width: 100%; min-width: 0; min-height: 46px; padding: 0 9px; font-size: 13px; }
+  .overdue-filter { min-height: 44px; padding: 0 8px; font-size: 12px; }
+  .patient-filters .text-button { grid-column: 1 / -1; justify-self: end; min-height: 40px; font-size: 13px; }
+  .patients-panel .table-wrap {
+    max-height: none;
+    overflow: visible;
+    margin: 0;
+    scrollbar-gutter: auto;
+  }
+  .patients-table tbody { display: grid; gap: 12px; }
+  .patients-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px 12px;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid #e9e5dc;
+    border-radius: 14px;
+    background: #fffdf9;
+  }
+  .patients-table tbody td {
+    display: block;
+    min-width: 0;
+    width: auto !important;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    font-size: 14px;
+    white-space: normal;
+  }
+  .patients-table tbody td::before {
+    display: block;
+    margin-bottom: 3px;
+    color: #88948b;
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .patients-table tbody td:nth-child(1) { grid-column: 1 / -1; }
+  .patients-table tbody td:nth-child(2) { grid-column: 1 / -1; }
+  .patients-table tbody td:nth-child(3) { grid-column: 1; }
+  .patients-table tbody td:nth-child(4) { grid-column: 2; }
+  .patients-table tbody td:nth-child(5) { grid-column: 1; }
+  .patients-table tbody td:nth-child(6) { grid-column: 1 / -1; }
+  .patients-table tbody td:nth-child(7) { grid-column: 2; align-self: end; }
+  .patients-table .patient-name-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .patients-table .patient-name-cell strong { font-size: 18px; line-height: 1.3; }
+  .patient-edit { flex: 0 0 38px; width: 38px; height: 38px; font-size: 16px; }
+  .frequency-badge { max-width: 100%; padding: 5px 8px; font-size: 12px; white-space: normal; }
+  .schedule-sub, .sessions-sub { font-size: 12px; line-height: 1.4; white-space: normal; }
+  .patients-table td > strong { font-size: 15px; }
+  .session-accordion { border: 1px solid #e8ece6; border-radius: 10px; background: #fff; }
+  .session-accordion > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 46px;
+    padding: 9px 11px;
+    color: #315746;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    list-style-position: inside;
+  }
+  .session-accordion > summary strong { color: #a4473d; font-size: 12px; }
+  .session-accordion > summary small { color: #758279; font-size: 12px; font-weight: 500; }
+  .session-accordion[open] > summary { border-bottom: 1px solid #edf0eb; }
+  .session-lines { display: grid; gap: 9px; padding: 9px; }
+  .session-line,
+  .session-line.overdue {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: 0;
+    padding: 9px;
+    border-radius: 10px;
+  }
+  .session-line.overdue { padding-top: 28px; }
+  .session-line .session-datetime { grid-column: 1 / -1; width: 100%; min-height: 44px; font-size: 14px; }
+  .session-line .session-kind-placeholder { display: none; }
+  .session-line .session-kind.overdue-tag,
+  .session-line .session-kind.emergency-tag { position: absolute; top: 5px; right: 8px; }
+  .session-line select { grid-column: 1; width: 100%; min-height: 44px; font-size: 14px; }
+  .session-paid { grid-column: 2; justify-self: end; min-width: 0; width: auto; min-height: 44px; font-size: 14px; }
+  .session-paid input { width: 22px; height: 22px; }
+  .session-amount { grid-column: 1; width: 100%; min-height: 44px; font-size: 16px; }
+  .session-delete { grid-column: 2; justify-self: end; width: 44px; height: 44px; }
+  .patients-footer { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 13px 14px; font-size: 13px; }
+  .modal-backdrop { align-items: flex-end; padding: 0; }
+  .modal {
+    width: 100%;
+    max-height: min(92dvh, 850px);
+    padding: 22px 18px calc(18px + env(safe-area-inset-bottom));
+    border-radius: 20px 20px 0 0;
+  }
+  .modal-heading h2 { font-size: 21px; }
+  .field-label { gap: 6px; font-size: 14px; }
+  .field-label input, .field-label select { height: 48px; font-size: 16px; }
+  .field-hint, .settings-copy { font-size: 13px; }
+  .type-switch span { min-height: 42px; font-size: 14px; }
+  .recurring-toggle { font-size: 14px; }
+  .modal-actions { position: sticky; bottom: -18px; padding: 12px 0 0; background: #fff; }
+  .modal-actions .primary-button, .modal-actions .secondary-button { min-height: 44px; font-size: 14px; }
+  .page-footer { flex-wrap: wrap; gap: 8px 14px; padding-bottom: 6px; font-size: 12px; line-height: 1.4; }
+  .page-footer span:first-child { max-width: none; }
+}
+
+@media (max-width: 380px) {
+  .main-content { padding-right: 11px; padding-left: 11px; }
+  .top-actions .primary-button { padding: 9px 10px; font-size: 13px; }
+  .side-nav { gap: 4px; }
+  .side-nav .nav-link, .side-nav .nav-link.active { flex: 1 1 0; min-width: 0; padding: 4px 6px; font-size: 11px; }
+  .field-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .period-widget-controls strong { font-size: 22px; }
+  .patient-filters { grid-template-columns: minmax(0, 1fr); }
+  .patient-search, .patient-filters .text-button { grid-column: 1; }
+  .overdue-filter { grid-column: 1; }
 }
 @media (max-width: 600px) {
   .patients-title-row h2,
@@ -3460,3 +3754,302 @@ td {
 .session-paid input { width: 20px; height: 20px; }
 .session-amount { width: 85px; min-height: 44px; font-size: 14px; }
 .session-datetime { width: 164px; min-height: 48px; font-size: 12px; }
+
+/* Keep legacy desktop column widths from shrinking the patient cards. */
+@media (max-width: 600px) {
+  .patients-table tbody tr { width: 100%; max-width: 100%; }
+  .patients-table tbody td,
+  .patients-table tbody td:nth-child(1),
+  .patients-table tbody td:nth-child(2),
+  .patients-table tbody td:nth-child(3),
+  .patients-table tbody td:nth-child(4),
+  .patients-table tbody td:nth-child(5),
+  .patients-table tbody td:nth-child(6),
+  .patients-table tbody td:nth-child(7) {
+    width: auto !important;
+    max-width: 100%;
+  }
+  .patients-table .patient-name-cell strong { min-width: 0; overflow-wrap: normal; word-break: normal; }
+  .patients-table .schedule-sub { white-space: normal; }
+  .session-line,
+  .session-line.overdue { min-height: 0 !important; }
+  .session-line .session-datetime,
+  .session-line select,
+  .session-line .session-amount { width: 100% !important; }
+  .session-line .session-paid { width: auto !important; min-width: 0 !important; }
+}
+
+/* Match patient cards to the compact two-column transaction cards. */
+@media (max-width: 600px) {
+  .patients-table tbody tr {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 13px 14px;
+    padding: 15px;
+    border-color: #e9e5dc;
+    background: #fffdf9;
+  }
+  .patients-table tbody td:nth-child(1) { grid-column: 1 / -1; grid-row: 1; }
+  .patients-table tbody td:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+  .patients-table tbody td:nth-child(3) { grid-column: 1; grid-row: 3; }
+  .patients-table tbody td:nth-child(4) { grid-column: 2; grid-row: 3; }
+  .patients-table tbody td:nth-child(5) { grid-column: 1; grid-row: 4; }
+  .patients-table tbody td:nth-child(7) { grid-column: 2; grid-row: 4; }
+  .patients-table tbody td:nth-child(6) { grid-column: 1 / -1; grid-row: 5; }
+  .patients-table tbody td::before {
+    margin-bottom: 4px;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+  .patients-table tbody td:nth-child(1)::before,
+  .patients-table tbody td:nth-child(6)::before { display: none; }
+  .patients-table .patient-name-cell { min-height: 38px; }
+  .patients-table .patient-name-cell strong { font-size: 18px; }
+  .patient-edit { order: 2; }
+  .frequency-badge { display: inline-flex; margin: 0 0 3px; }
+  .patients-table td > strong { display: block; font-size: 17px; line-height: 1.35; }
+  .sessions-sub, .schedule-sub { margin-top: 3px; font-size: 13px; line-height: 1.4; }
+  .session-accordion { border: 0; border-radius: 0; background: transparent; }
+  .session-accordion > summary {
+    min-height: 48px;
+    padding: 11px 0 2px;
+    border-top: 1px solid #e9e5dc;
+    border-radius: 0;
+    font-size: 14px;
+    list-style: none;
+  }
+  .session-accordion > summary::-webkit-details-marker { display: none; }
+  .session-accordion[open] > summary { border-bottom: 0; }
+  .session-lines { gap: 8px; padding: 8px 0 0; }
+}
+
+/* Desktop patient view switch and responsive card layout. */
+.patient-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.patient-view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid #e6e9e2;
+  border-radius: 10px;
+  background: #f7f8f5;
+}
+.patient-view-switch button {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  color: #67766d;
+  background: transparent;
+  font: 600 13px "DM Sans", sans-serif;
+  cursor: pointer;
+}
+.patient-view-switch button[aria-pressed="true"] {
+  color: #28694f;
+  background: #fff;
+  box-shadow: 0 1px 4px #203c2717;
+}
+.patient-view-switch button:focus-visible {
+  outline: 2px solid #62a98a;
+  outline-offset: 2px;
+}
+.patients-panel.cards-view .table-wrap {
+  max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
+}
+.patients-panel.cards-view .patients-table {
+  display: block;
+  width: 100%;
+  min-width: 0 !important;
+  white-space: normal;
+}
+.patients-panel.cards-view .patients-table thead { display: none; }
+.patients-panel.cards-view .patients-table tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr));
+  align-items: start;
+  gap: 14px;
+}
+.patients-panel.cards-view .patients-table tbody tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 13px 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e9e5dc;
+  border-radius: 14px;
+  background: #fffdf9;
+}
+.patients-panel.cards-view .patients-table tbody td {
+  display: block;
+  width: auto !important;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 14px;
+}
+.patients-panel.cards-view .patients-table tbody td::before {
+  display: block;
+  margin-bottom: 4px;
+  color: #88948b;
+  content: attr(data-label);
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.patients-panel.cards-view .patients-table tbody td:nth-child(1) { grid-column: 1 / -1; grid-row: 1; }
+.patients-panel.cards-view .patients-table tbody td:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+.patients-panel.cards-view .patients-table tbody td:nth-child(3) { grid-column: 1; grid-row: 3; }
+.patients-panel.cards-view .patients-table tbody td:nth-child(4) { grid-column: 2; grid-row: 3; }
+.patients-panel.cards-view .patients-table tbody td:nth-child(5) { grid-column: 1; grid-row: 4; }
+.patients-panel.cards-view .patients-table tbody td:nth-child(7) { grid-column: 2; grid-row: 4; }
+.patients-panel.cards-view .patients-table tbody td:nth-child(6) { grid-column: 1 / -1; grid-row: 5; }
+.patients-panel.cards-view .patients-table tbody td:nth-child(1)::before,
+.patients-panel.cards-view .patients-table tbody td:nth-child(6)::before { display: none; }
+.patients-panel.cards-view .patient-name-cell { display: flex; align-items: center; min-height: 38px; gap: 8px; }
+.patients-panel.cards-view .patient-name-cell strong { min-width: 0; font-size: 18px; line-height: 1.35; overflow-wrap: anywhere; }
+.patients-panel.cards-view .patients-table td > strong { display: block; font-size: 17px; line-height: 1.35; }
+.patients-panel.cards-view .schedule-sub,
+.patients-panel.cards-view .sessions-sub { margin-top: 3px; font-size: 13px; line-height: 1.4; white-space: normal; }
+.patients-panel.cards-view .frequency-badge { margin-bottom: 3px; font-size: 13px; }
+.patients-panel.cards-view .session-accordion { border: 0; border-radius: 0; background: transparent; }
+.patients-panel.cards-view .session-accordion > summary {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 0 2px;
+  border-top: 1px solid #e9e5dc;
+  color: #315746;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+.patients-panel.cards-view .session-accordion > summary::-webkit-details-marker { display: none; }
+.patients-panel.cards-view .session-accordion > summary strong { color: #a4473d; font-size: 12px; }
+.patients-panel.cards-view .session-accordion > summary small { color: #758279; font-size: 12px; font-weight: 500; }
+.patients-panel.cards-view .session-lines { display: grid; gap: 8px; padding: 8px 0 0; }
+.patients-panel.cards-view .session-line,
+.patients-panel.cards-view .session-line.overdue {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 0;
+  padding: 28px 9px 9px;
+}
+.patients-panel.cards-view .session-line .session-datetime { grid-column: 1 / -1; width: 100%; min-height: 44px; font-size: 14px; }
+.patients-panel.cards-view .session-kind-placeholder { display: none; }
+.patients-panel.cards-view .session-kind.overdue-tag,
+.patients-panel.cards-view .session-kind.emergency-tag { position: absolute; top: 5px; right: 8px; }
+.patients-panel.cards-view .session-line select { grid-column: 1; width: 100%; min-height: 44px; font-size: 14px; }
+.patients-panel.cards-view .session-paid { grid-column: 2; justify-self: end; width: auto; min-width: 0; min-height: 44px; font-size: 14px; }
+.patients-panel.cards-view .session-paid input { width: 22px; height: 22px; }
+.patients-panel.cards-view .session-amount { grid-column: 1; width: 100%; min-height: 44px; font-size: 16px; }
+.patients-panel.cards-view .session-delete { grid-column: 2; justify-self: end; width: 44px; height: 44px; }
+
+@media (max-width: 800px) and (min-width: 601px) {
+  .patient-header-actions { gap: 6px; }
+  .patient-view-switch button { padding: 0 8px; font-size: 12px; }
+}
+@media (max-width: 600px) {
+  .patient-view-switch { display: none; }
+}
+.transactions-panel.cards-view .table-wrap {
+  max-height: none;
+  overflow: visible;
+}
+.transactions-panel.cards-view table {
+  display: block;
+  width: 100%;
+  min-width: 0 !important;
+  white-space: normal;
+}
+.transactions-panel.cards-view thead { display: none; }
+.transactions-panel.cards-view tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+.transactions-panel.cards-view .transaction-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e9e5dc;
+  border-radius: 13px;
+  background: #fffdf9;
+}
+.transactions-panel.cards-view .transaction-row td {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  white-space: normal;
+  font-size: 14px;
+}
+.transactions-panel.cards-view .transaction-description { grid-column: 1; grid-row: 1; }
+.transactions-panel.cards-view .transaction-actions { grid-column: 2; grid-row: 1; align-self: start; }
+.transactions-panel.cards-view .transaction-row td[data-label]::before {
+  display: block;
+  margin-bottom: 3px;
+  color: #88948b;
+  content: attr(data-label);
+  font-size: 11px;
+  font-weight: 600;
+}
+.transactions-panel.cards-view .transaction-row td[data-label="Categoria"] { grid-column: 1; grid-row: 2; }
+.transactions-panel.cards-view .transaction-row td[data-label="Data"] { grid-column: 2; grid-row: 2; text-align: right; }
+.transactions-panel.cards-view .transaction-row td[data-label="Tipo"] { grid-column: 1; grid-row: 3; }
+.transactions-panel.cards-view .transaction-row td[data-label="Valor"] { grid-column: 2; grid-row: 3; text-align: right; font-weight: 700; }
+.session-disclosure-chevron {
+  flex: 0 0 9px;
+  width: 9px;
+  height: 9px;
+  margin: -4px 3px 0 auto;
+  border-right: 2px solid #718278;
+  border-bottom: 2px solid #718278;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  transition: transform 160ms ease;
+}
+.session-accordion[open] .session-disclosure-chevron {
+  margin-top: 4px;
+  transform: rotate(225deg);
+}
+@media (max-width: 600px) {
+  .period-control-large {
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 8px 10px;
+  }
+  .period-widget-controls {
+    min-width: 0;
+    gap: 4px;
+  }
+  .period-widget-controls > button {
+    flex: 0 0 38px;
+    width: 38px;
+    height: 42px;
+    border-radius: 10px;
+    font-size: 28px;
+  }
+  .period-widget-controls strong {
+    min-width: 0;
+    gap: 4px;
+    font-size: clamp(18px, 6vw, 22px);
+  }
+  .period-widget-controls strong small { font-size: 13px; }
+}

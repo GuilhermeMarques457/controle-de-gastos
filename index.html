@@ -227,6 +227,10 @@
               <p>Seus registros mais recentes em um só lugar</p>
             </div>
             <div class="filters">
+              <div class="patient-view-switch transaction-view-switch" role="group" aria-label="Visualização das movimentações">
+                <button type="button" data-transaction-view="table" aria-pressed="true">☷ Tabela</button>
+                <button type="button" data-transaction-view="cards" aria-pressed="false">▦ Cartões</button>
+              </div>
               <label class="filter-control"
                 ><span>⌕</span
                 ><select id="type-filter" aria-label="Filtrar por tipo">
@@ -308,7 +312,13 @@
           <article class="panel patients-panel">
             <div class="panel-heading transactions-heading">
               <div><div class="patients-title-row"><span class="patients-brain" aria-hidden="true">🧠</span><h2>Pacientes e sessões</h2></div><p id="patients-caption">Sessões previstas e pagamentos de <span id="patients-month"></span></p></div>
-              <button class="secondary-button" id="new-emergency-session" type="button">＋ Adicionar sessão extra</button>
+              <div class="patient-header-actions">
+                <div class="patient-view-switch" role="group" aria-label="Visualização dos pacientes">
+                  <button type="button" data-patient-view="table" aria-pressed="true">☷ Tabela</button>
+                  <button type="button" data-patient-view="cards" aria-pressed="false">▦ Cartões</button>
+                </div>
+                <button class="secondary-button" id="new-emergency-session" type="button">＋ Adicionar sessão extra</button>
+              </div>
             </div>
             <div class="patient-filters" aria-label="Filtros de pacientes">
               <label class="patient-search"><span>⌕</span><input id="patient-search" type="search" placeholder="Buscar por nome ou telefone" aria-label="Buscar pacientes por nome ou telefone" /></label>

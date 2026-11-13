@@ -3,6 +3,8 @@
   const STORAGE_KEY = "meuDinheiro.v1";
   const SETTINGS_KEY = "meuDinheiro.jsonbin";
   const PERIOD_WIDGET_KEY = "meuDinheiro.periodWidget";
+  const PATIENT_VIEW_KEY = "meuDinheiro.patientView";
+  const TRANSACTION_VIEW_KEY = "meuDinheiro.transactionView";
   const EXPENSE_CATEGORIES = [
     "Aluguel do consultório",
     "Água, luz e internet",
@@ -91,6 +93,20 @@
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   };
+  const readPatientView = () => {
+    try {
+      return localStorage.getItem(PATIENT_VIEW_KEY) === "cards" ? "cards" : "table";
+    } catch {
+      return "table";
+    }
+  };
+  const readTransactionView = () => {
+    try {
+      return localStorage.getItem(TRANSACTION_VIEW_KEY) === "cards" ? "cards" : "table";
+    } catch {
+      return "table";
+    }
+  };
   const state = {
     entries: [],
     patients: [],
@@ -104,6 +120,8 @@
     activeMonth: localMonth(),
     filters: { type: "all", month: "" },
     showAll: false,
+    patientView: readPatientView(),
+    transactionView: readTransactionView(),
     settings: readSettings(),
     charts: {},
   };
@@ -483,6 +501,11 @@
     if (changed) persistLocal();
   }
   function renderClinic() {
+    const isMobileLayout = window.matchMedia("(max-width: 600px)").matches;
+    $(".patients-panel").classList.toggle("cards-view", state.patientView === "cards" && !isMobileLayout);
+    document.querySelectorAll("[data-patient-view]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.patientView === state.patientView));
+    });
     const pct = state.potPercentages,
       entries = monthEntries(state.activeMonth),
       income = entries.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
@@ -547,7 +570,10 @@
           return `<div class="session-line${overdue ? " overdue" : ""}"><input class="session-datetime" type="datetime-local" value="${session.date}T${(session.time || patient.time || "09:00").slice(0, 5)}" data-session-datetime="${session.id}" aria-label="Data e horário da sessão de ${escapeHtml(patient.name)}" />${overdue ? '<span class="session-kind-placeholder" aria-hidden="true"></span><span class="session-kind overdue-tag">Vencida</span>' : extra ? '<span class="session-kind emergency-tag">Extra</span>' : '<span class="session-kind-placeholder" aria-hidden="true"></span>'}<select aria-label="Presença de ${escapeHtml(patient.name)}" data-attendance="${session.id}"><option value="pending" ${session.attendance === "pending" ? "selected" : ""}>A confirmar</option><option value="attended" ${session.attendance === "attended" ? "selected" : ""}>Compareceu</option><option value="missed" ${session.attendance === "missed" ? "selected" : ""}>Faltou</option><option value="rescheduled" ${session.attendance === "rescheduled" ? "selected" : ""}>Remarcou</option></select><label class="session-paid"><input type="checkbox" data-paid="${session.id}" ${session.paid ? "checked" : ""} aria-label="Sessão paga" /> Pago</label><input class="session-amount" type="number" min="0" step="0.01" value="${Number(session.amount || 0)}" data-session-amount="${session.id}" aria-label="Valor da sessão" /><button class="session-delete" type="button" data-session-delete="${session.id}" aria-label="Excluir sessão de ${escapeHtml(patient.name)}" title="Excluir sessão"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3" /></svg></button></div>`;
         }).join("") || `<span class="metric-period">${overdueOnly ? "Sem sessões vencidas" : "Sem sessões neste mês"}</span>`,
         frequencyClass = patient.frequency || "weekly";
-      return `<tr><td><div class="patient-name-cell"><strong>${escapeHtml(patient.name)}</strong><button class="patient-edit" data-patient-edit="${patient.id}" aria-label="Editar paciente">✎</button></div></td><td>${escapeHtml(patient.phone || "—")}</td><td><span class="frequency-badge ${frequencyClass}">${FREQUENCIES[frequencyClass] || "Semanal"}</span><small class="schedule-sub">${scheduleLabel}</small><small class="schedule-sub payment-frequency">Pagamento ${FREQUENCIES[patient.paymentFrequency] || "mensal"}</small></td><td><strong>${visits.length}</strong><small class="sessions-sub">${visits.filter((session) => session.attendance === "attended").length} realizadas</small></td><td><strong>${money(patient.price || 0)}</strong><small class="sessions-sub">${money(total)} ${overdueOnly ? "vencido" : "no mês"}</small></td><td><div class="session-lines">${visitControls}</div></td><td><strong>${money(visits.filter((session) => session.paid).reduce((sum, session) => sum + Number(session.amount || 0), 0))}</strong></td></tr>`;
+      const paid = visits.filter((session) => session.paid).reduce((sum, session) => sum + Number(session.amount || 0), 0),
+        overdueAmount = visits.filter((session) => sessionIsOverdue(session, patient)).reduce((sum, session) => sum + Number(session.amount || 0), 0),
+        accordionOpen = !isMobileLayout && state.patientView === "table" ? " open" : "";
+      return `<tr><td><div class="patient-name-cell"><strong>${escapeHtml(patient.name)}</strong><button class="patient-edit" data-patient-edit="${patient.id}" aria-label="Editar paciente">✎</button></div></td><td data-label="Telefone">${escapeHtml(patient.phone || "—")}</td><td data-label="Agenda"><span class="frequency-badge ${frequencyClass}">${FREQUENCIES[frequencyClass] || "Semanal"}</span><small class="schedule-sub">${scheduleLabel}</small><small class="schedule-sub payment-frequency">Pagamento ${FREQUENCIES[patient.paymentFrequency] || "mensal"}</small></td><td data-label="Sessões"><strong>${visits.length}</strong><small class="sessions-sub">${visits.filter((session) => session.attendance === "attended").length} realizadas</small></td><td data-label="Valor por sessão"><strong>${money(patient.price || 0)}</strong><small class="sessions-sub">${money(total)} ${overdueOnly ? "vencido" : "no mês"}</small></td><td class="patient-sessions-cell" data-label="Sessões e pagamentos"><details class="session-accordion"${accordionOpen}><summary><span>Ver ${visits.length === 1 ? "sessão" : `${visits.length} sessões`}</span>${overdueAmount ? `<strong>${money(overdueAmount)} vencidos</strong>` : "<small>presenças e pagamentos</small>"}<i class="session-disclosure-chevron" aria-hidden="true"></i></summary><div class="session-lines">${visitControls}</div></details></td><td data-label="Recebido"><strong>${money(paid)}</strong></td></tr>`;
     }).join("");
     const noPatients = patients.length === 0;
     $("#patients-empty").classList.toggle("show", visiblePatients.length === 0);
@@ -738,6 +764,11 @@
       '<span class="metric-period">Sem despesas neste mês</span>';
   }
   function renderTransactions() {
+    const isMobileLayout = window.matchMedia("(max-width: 600px)").matches;
+    $(".transactions-panel").classList.toggle("cards-view", state.transactionView === "cards" && !isMobileLayout);
+    document.querySelectorAll("[data-transaction-view]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.transactionView === state.transactionView));
+    });
     const filtered = state.entries
       .filter(
         (e) =>
@@ -749,7 +780,7 @@
     $("#transaction-list").innerHTML = visible
       .map((e) => {
         const color = colorFor(e.category);
-        return `<tr class="transaction-row"><td><div class="description-cell"><span class="row-icon" style="background:${color}20;color:${color}">${e.type === "income" ? "↙" : "↗"}</span>${escapeHtml(e.description)}</div></td><td><span class="category-tag" style="background:${color}17;color:${color}"><i style="background:${color}"></i>${escapeHtml(e.category)}</span></td><td>${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${e.date}T12:00:00`)).replace(".", "")}</td><td><span class="type-tag ${e.type}">${e.type === "income" ? "Entrada" : "Despesa"}</span></td><td class="amount-cell ${e.type === "expense" ? "negative" : ""}">${e.type === "expense" ? "−" : "+"} ${money(e.amount)}</td><td><div class="row-actions"><button data-edit="${escapeHtml(e.id)}" aria-label="Editar">✎</button><button data-delete="${escapeHtml(e.id)}" aria-label="Excluir">×</button></div></td></tr>`;
+        return `<tr class="transaction-row"><td class="transaction-description"><div class="description-cell"><span class="row-icon" style="background:${color}20;color:${color}">${e.type === "income" ? "↙" : "↗"}</span>${escapeHtml(e.description)}</div></td><td data-label="Categoria"><span class="category-tag" style="background:${color}17;color:${color}"><i style="background:${color}"></i>${escapeHtml(e.category)}</span></td><td data-label="Data">${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${e.date}T12:00:00`)).replace(".", "")}</td><td data-label="Tipo"><span class="type-tag ${e.type}">${e.type === "income" ? "Entrada" : "Despesa"}</span></td><td data-label="Valor" class="amount-cell ${e.type === "expense" ? "negative" : ""}">${e.type === "expense" ? "−" : "+"} ${money(e.amount)}</td><td class="transaction-actions"><div class="row-actions"><button data-edit="${escapeHtml(e.id)}" aria-label="Editar">✎</button><button data-delete="${escapeHtml(e.id)}" aria-label="Excluir">×</button></div></td></tr>`;
       })
       .join("");
     const empty = filtered.length === 0;
@@ -899,6 +930,13 @@
     bindSectionNavigation();
     bindPeriodWidget();
     $("#new-entry").addEventListener("click", prepareNew);
+    $(".transaction-view-switch").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-transaction-view]");
+      if (!button) return;
+      state.transactionView = button.dataset.transactionView;
+      try { localStorage.setItem(TRANSACTION_VIEW_KEY, state.transactionView); } catch {}
+      renderTransactions();
+    });
     $("#new-patient").addEventListener("click", () => preparePatient());
     $("#empty-patient-add").addEventListener("click", () => preparePatient());
     $("#new-emergency-session").addEventListener("click", () => {
@@ -924,6 +962,13 @@
       state.clinicSessions.push({ id: uid(), patientId: patient.id, date, month: date.slice(0, 7), time, amount: Number($("#emergency-amount").value), kind: "extra", attendance: "pending", paid: false, note: $("#emergency-note").value.trim() });
       closeModal("emergency-session-modal");
       await saveData("Sessão extra de emergência adicionada.");
+    });
+    document.querySelector(".patients-panel .patient-view-switch").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-patient-view]");
+      if (!button) return;
+      state.patientView = button.dataset.patientView;
+      try { localStorage.setItem(PATIENT_VIEW_KEY, state.patientView); } catch {}
+      renderClinic();
     });
     $("#patient-search").addEventListener("input", renderClinic);
     ["#patient-frequency-filter", "#patient-session-filter", "#overdue-only-filter"].forEach((selector) => $(selector).addEventListener("change", renderClinic));
@@ -1204,6 +1249,28 @@
     widget.hidden = Boolean(saved.closed);
     reopen.hidden = !saved.closed;
     if (saved.closed) reopen.textContent = `Mês: ${monthLabel(state.activeMonth)}`;
+    const keepMonthVisibleOnMobile = () => {
+      if (!window.matchMedia("(max-width: 600px)").matches) return;
+      widget.hidden = false;
+      reopen.hidden = true;
+      const currentLeft = Number.parseFloat(widget.style.left),
+        currentTop = Number.parseFloat(widget.style.top),
+        preferredLeft = Number.isFinite(currentLeft) ? currentLeft : saved.left,
+        preferredTop = Number.isFinite(currentTop) ? currentTop : saved.top;
+      if (Number.isFinite(preferredLeft) && Number.isFinite(preferredTop)) {
+        const maxLeft = Math.max(8, window.innerWidth - widget.offsetWidth - 8),
+          maxTop = Math.max(8, window.innerHeight - widget.offsetHeight - 88);
+        widget.style.left = `${Math.max(8, Math.min(maxLeft, preferredLeft))}px`;
+        widget.style.top = `${Math.max(8, Math.min(maxTop, preferredTop))}px`;
+        widget.style.right = "auto";
+      } else {
+        widget.style.left = "";
+        widget.style.top = "";
+        widget.style.right = "";
+      }
+    };
+    keepMonthVisibleOnMobile();
+    window.addEventListener("resize", keepMonthVisibleOnMobile);
     const savePosition = () => {
       const rect = widget.getBoundingClientRect();
       localStorage.setItem(PERIOD_WIDGET_KEY, JSON.stringify({ left: rect.left, top: rect.top, closed: widget.hidden }));
@@ -1233,7 +1300,8 @@
     handle.addEventListener("pointermove", (event) => {
       if (handle.dataset.dragging !== "true") return;
       const left = Math.max(8, Math.min(window.innerWidth - widget.offsetWidth - 8, Number(handle.dataset.left) + event.clientX - Number(handle.dataset.pointerX))),
-        top = Math.max(8, Math.min(window.innerHeight - widget.offsetHeight - 8, Number(handle.dataset.top) + event.clientY - Number(handle.dataset.pointerY)));
+        bottomClearance = window.matchMedia("(max-width: 600px)").matches ? 88 : 8,
+        top = Math.max(8, Math.min(window.innerHeight - widget.offsetHeight - bottomClearance, Number(handle.dataset.top) + event.clientY - Number(handle.dataset.pointerY)));
       widget.style.left = `${left}px`;
       widget.style.top = `${top}px`;
       widget.style.right = "auto";
