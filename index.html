@@ -314,6 +314,7 @@
               <label class="patient-search"><span>⌕</span><input id="patient-search" type="search" placeholder="Buscar por nome ou telefone" aria-label="Buscar pacientes por nome ou telefone" /></label>
               <select id="patient-frequency-filter" aria-label="Filtrar por frequência"><option value="all">Todas as frequências</option><option value="weekly">Semanal</option><option value="biweekly">Quinzenal</option><option value="monthly">Mensal</option></select>
               <select id="patient-session-filter" aria-label="Filtrar pelas sessões"><option value="all">Todas as sessões</option><option value="extra">Sessões extras</option><option value="regular">Sessões regulares</option><option value="paid">Com pagamento</option><option value="unpaid">Pagamento pendente</option><option value="attended">Compareceu</option><option value="missed">Faltou</option><option value="rescheduled">Remarcou</option><option value="pending">A confirmar</option></select>
+              <label class="overdue-filter"><input id="overdue-only-filter" type="checkbox" /> Somente vencidas</label>
               <button class="text-button" id="clear-patient-filters" type="button">Limpar filtros</button>
             </div>
             <div class="table-wrap">
@@ -457,6 +458,7 @@
             <label class="field-label">Início do acompanhamento<input id="patient-start" type="date" required /></label>
             <label class="field-label">Dia da sessão<select id="patient-weekday"><option value="0">Domingo</option><option value="1">Segunda-feira</option><option value="2">Terça-feira</option><option value="3">Quarta-feira</option><option value="4">Quinta-feira</option><option value="5">Sexta-feira</option><option value="6">Sábado</option></select></label>
           </div>
+          <label class="field-label">Frequência de pagamento<select id="patient-payment-frequency"><option value="weekly">Semanal (7 dias)</option><option value="biweekly">Quinzenal (15 dias)</option><option value="monthly">Mensal (mesmo dia do mês seguinte)</option></select><small class="field-hint">Uma sessão não paga fica vencida após esse prazo, contado da data da sessão.</small></label>
           <div class="field-row"><label class="field-label">Horário da sessão<input id="patient-time" type="time" required /></label><label class="field-label">Valor por sessão (R$)<input id="patient-price" type="number" min="0.01" step="0.01" required placeholder="0,00" /></label></div>
           <div class="patient-conflict-warning" id="patient-time-conflict" hidden><p id="patient-time-conflict-copy"></p><button class="primary-button" id="save-patient-with-conflict" type="button">Salvar mesmo assim</button></div>
           <div class="modal-actions"><button class="secondary-button" type="button" data-close="patient-modal">Cancelar</button><button class="primary-button" type="submit">Salvar paciente</button></div>

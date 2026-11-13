@@ -42,7 +42,8 @@ No formulário, as categorias sugeridas acompanham o tipo selecionado: despesas 
 
 ## Clínica
 
-- A área **Clínica** permite cadastrar pacientes com telefone, frequência semanal, quinzenal ou mensal, data de início, valor por sessão e indicação de emergência. As sessões previstas são calculadas automaticamente para o mês selecionado, incluindo meses com quatro ou cinco sessões semanais.
+- A área **Clínica** permite cadastrar pacientes com telefone, frequência de sessões semanal, quinzenal ou mensal, frequência de pagamento, data de início e valor por sessão. As sessões previstas são calculadas automaticamente para o mês selecionado, incluindo meses com quatro ou cinco sessões semanais. Uma sessão não paga fica destacada como vencida após o prazo de pagamento do paciente: 7 dias, 15 dias ou até o mesmo dia do mês seguinte (limitado ao último dia do mês quando necessário). Sessões marcadas como falta não geram cobrança vencida.
+- Use **Somente vencidas** para listar sessões não pagas vencidas em qualquer mês e ver o total em aberto. Desmarque para voltar à agenda do mês selecionado.
 - Para cada sessão, registre presença (a confirmar, compareceu, faltou ou remarcou), valor e pagamento. Sessões pagas entram como receita da categoria **Atendimentos clínicos** no resumo e no fluxo financeiro, separadas dos lançamentos de salário.
 - As despesas podem ser classificadas como fixas, parceladas, recorrentes, únicas ou emergenciais, com vencimento no prazo, adiantado ou atrasado. Marque **Já foi pago** para contar a despesa como saída e escolha o pote que ela reduz.
 - A divisão inicial dos potes é **Contas 50%**, **Desejos 30%** e **Futuro 20%**. Ela pode ser ajustada; as entradas do mês são distribuídas pelas porcentagens e as despesas pagas reduzem o saldo disponível do pote escolhido.
