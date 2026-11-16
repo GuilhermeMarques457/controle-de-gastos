@@ -112,6 +112,7 @@
     patients: [],
     clinicSessions: [],
     pendingSessionDelete: "",
+    pendingPatientDelete: "",
     pendingSessionChange: null,
     pendingPatientSave: null,
     potPercentages: { accounts: 50, wishes: 30, future: 20 },
@@ -895,6 +896,7 @@
     $("#patient-time-conflict").hidden = true;
     state.pendingPatientSave = null;
     $("#patient-modal-title").textContent = patient ? "Editar paciente" : "Novo paciente";
+    $("#delete-patient-action").hidden = !patient;
     openModal("patient-modal");
   }
   async function savePatientRecord(patient) {
@@ -914,6 +916,14 @@
     await saveData("Paciente salvo.");
   }
   async function commitSessionDateTime(change) {
+    if (change.kind === "extra") {
+      state.clinicSessions.push({ id: uid(), patientId: change.patientId, date: change.date, month: change.date.slice(0, 7), time: change.time, amount: change.amount, kind: "extra", attendance: "pending", paid: false, note: change.note });
+      state.pendingSessionChange = null;
+      closeModal("session-conflict-modal");
+      closeModal("emergency-session-modal");
+      await saveData("Sessão extra de emergência adicionada.");
+      return;
+    }
     const session = state.clinicSessions.find((item) => item.id === change.sessionId);
     if (!session) return;
     session.scheduledDate ||= session.originalDate || session.date;
@@ -958,10 +968,21 @@
       event.preventDefault();
       const patient = state.patients.find((item) => item.id === $("#emergency-patient").value);
       if (!patient) return;
-      const [date, time] = $("#emergency-date").value.split("T");
-      state.clinicSessions.push({ id: uid(), patientId: patient.id, date, month: date.slice(0, 7), time, amount: Number($("#emergency-amount").value), kind: "extra", attendance: "pending", paid: false, note: $("#emergency-note").value.trim() });
-      closeModal("emergency-session-modal");
-      await saveData("Sessão extra de emergência adicionada.");
+      const [date, time] = $("#emergency-date").value.split("T"),
+        change = { kind: "extra", patientId: patient.id, date, time, amount: Number($("#emergency-amount").value), note: $("#emergency-note").value.trim() },
+        conflicts = state.clinicSessions.filter((item) => {
+          if (item.deleted || item.patientId === patient.id || item.date !== date) return false;
+          const otherPatient = state.patients.find((candidate) => candidate.id === item.patientId);
+          return (item.time || otherPatient?.time || "") === time;
+        });
+      if (conflicts.length) {
+        const names = [...new Set(conflicts.map((item) => state.patients.find((candidate) => candidate.id === item.patientId)?.name || "Outro paciente"))];
+        state.pendingSessionChange = change;
+        $("#session-conflict-copy").textContent = `Já há sessão de ${names.join(", ")} em ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${date}T12:00:00`))} às ${time}. Você pode voltar e escolher outro horário ou salvar mesmo assim.`;
+        openModal("session-conflict-modal");
+        return;
+      }
+      await commitSessionDateTime(change);
     });
     document.querySelector(".patients-panel .patient-view-switch").addEventListener("click", (event) => {
       const button = event.target.closest("[data-patient-view]");
@@ -1015,6 +1036,25 @@
       state.pendingSessionDelete = "";
       closeModal("delete-session-modal");
       await saveData("Sessão excluída.");
+    });
+    $("#delete-patient-action").addEventListener("click", () => {
+      const patient = state.patients.find((item) => item.id === $("#patient-id").value);
+      if (!patient) return;
+      state.pendingPatientDelete = patient.id;
+      $("#delete-patient-copy").textContent = `Excluir ${patient.name} e todas as sessões e pagamentos registrados para esse paciente? Essa ação não pode ser desfeita.`;
+      openModal("delete-patient-modal");
+    });
+    $("#confirm-delete-patient").addEventListener("click", async () => {
+      const patientId = state.pendingPatientDelete;
+      if (!patientId) return;
+      state.patients = state.patients.filter((item) => item.id !== patientId);
+      state.clinicSessions = state.clinicSessions.filter((item) => item.patientId !== patientId);
+      state.pendingPatientDelete = "";
+      state.pendingPatientSave = null;
+      $("#patient-time-conflict").hidden = true;
+      closeModal("delete-patient-modal");
+      closeModal("patient-modal");
+      await saveData("Paciente excluído.");
     });
     $("#patient-list").addEventListener("change", async (event) => {
       const target = event.target,
