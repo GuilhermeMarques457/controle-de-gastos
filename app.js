@@ -5,6 +5,7 @@
   const PERIOD_WIDGET_KEY = "meuDinheiro.periodWidget";
   const PATIENT_VIEW_KEY = "meuDinheiro.patientView";
   const TRANSACTION_VIEW_KEY = "meuDinheiro.transactionView";
+  const THEME_KEY = "meuDinheiro.theme";
   const EXPENSE_CATEGORIES = [
     "Aluguel do consultório",
     "Água, luz e internet",
@@ -126,6 +127,18 @@
     settings: readSettings(),
     charts: {},
   };
+  function applyTheme(theme) {
+    const selectedTheme = theme === "pink" ? "pink" : "blue";
+    document.body.dataset.theme = selectedTheme;
+    document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+      const active = button.dataset.themeChoice === selectedTheme;
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("active", active);
+    });
+    try { localStorage.setItem(THEME_KEY, selectedTheme); } catch {}
+    if (state.charts.trend && window.Chart) renderCharts();
+  }
+  try { applyTheme(localStorage.getItem(THEME_KEY)); } catch { applyTheme("blue"); }
   const money = (value, compact = false) =>
     new Intl.NumberFormat("pt-BR", {
       style: "currency",
@@ -618,6 +631,7 @@
   }
   function renderCharts() {
     if (!window.Chart) return;
+    const brandColor = getComputedStyle(document.body).getPropertyValue("--brand").trim() || "#6f9fca";
     const range = Number($("#chart-range")?.value || 6);
     const [year, month] = state.activeMonth.split("-").map(Number);
     const labels = [],
@@ -665,8 +679,8 @@
           {
             label: "Entradas",
             data: incomes,
-            borderColor: "#45987e",
-            backgroundColor: "#45987e18",
+            borderColor: brandColor,
+            backgroundColor: `${brandColor}18`,
             fill: true,
             tension: 0.37,
             borderWidth: 2,
@@ -939,6 +953,9 @@
   function bind() {
     bindSectionNavigation();
     bindPeriodWidget();
+    document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+      button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
+    });
     $("#new-entry").addEventListener("click", prepareNew);
     $(".transaction-view-switch").addEventListener("click", (event) => {
       const button = event.target.closest("[data-transaction-view]");
