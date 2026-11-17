@@ -120,6 +120,8 @@
     categories: [...DEFAULT_CATEGORIES],
     importedThrough: {},
     activeMonth: localMonth(),
+    agendaWeek: null,
+    agendaSelectedDay: null,
     filters: { type: "all", month: "" },
     showAll: false,
     patientView: readPatientView(),
@@ -444,6 +446,73 @@
   const POT_LABELS = { accounts: "Contas", wishes: "Desejos", future: "Futuro" };
   const FREQUENCIES = { weekly: "Semanal", biweekly: "Quinzenal", monthly: "Mensal" };
   const WEEKDAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  function agendaWeekDates(reference = new Date()) {
+    const monday = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate(), 12);
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+      return date;
+    });
+  }
+  function agendaDateLabel(date, options = { day: "numeric", month: "short" }) {
+    return new Intl.DateTimeFormat("pt-BR", options).format(date).replace(" de ", " ");
+  }
+  function renderAgenda() {
+    const dates = agendaWeekDates(state.agendaWeek || new Date()),
+      keys = dates.map(dateKey),
+      todayKey = dateKey(new Date());
+    if (!state.agendaSelectedDay || !keys.includes(state.agendaSelectedDay)) state.agendaSelectedDay = keys.includes(todayKey) ? todayKey : keys[0];
+    const months = [...new Set(keys.map((key) => key.slice(0, 7)))];
+    months.forEach((month) => ensureClinicSessions(month));
+    const sessionsByDate = new Map(keys.map((key) => [key, []]));
+    state.clinicSessions.filter((session) => !session.deleted && sessionsByDate.has(session.date)).forEach((session) => {
+      const patient = state.patients.find((item) => item.id === session.patientId);
+      if (!patient) return;
+      const time = (session.time || patient.time || "09:00").slice(0, 5);
+      sessionsByDate.get(session.date).push({ session, patient, time });
+    });
+    sessionsByDate.forEach((items) => items.sort((a, b) => a.time.localeCompare(b.time) || a.patient.name.localeCompare(b.patient.name, "pt-BR")));
+    const scheduledHours = [...sessionsByDate.values()].flat().map((item) => Number(item.time.split(":")[0])).filter((hour) => Number.isFinite(hour)),
+      firstHour = Math.max(0, Math.min(7, ...scheduledHours)),
+      lastHour = Math.min(23, Math.max(22, ...scheduledHours)),
+      agendaHours = Array.from({ length: lastHour - firstHour + 1 }, (_, index) => firstHour + index);
+    const first = dates[0], last = dates[6], sameMonth = first.getMonth() === last.getMonth() && first.getFullYear() === last.getFullYear(), sameYear = first.getFullYear() === last.getFullYear(),
+      dateRange = sameMonth
+        ? `${first.getDate()}–${last.getDate()} ${agendaDateLabel(last, { month: "long" })} ${last.getFullYear()}`
+        : sameYear
+          ? `${agendaDateLabel(first)} – ${agendaDateLabel(last)} ${last.getFullYear()}`
+          : `${agendaDateLabel(first)} ${first.getFullYear()} – ${agendaDateLabel(last)} ${last.getFullYear()}`;
+    $("#agenda-week-label").textContent = dateRange;
+    $("#agenda-mobile-days").innerHTML = dates.map((date) => {
+      const key = dateKey(date), count = sessionsByDate.get(key).length;
+      return `<button type="button" class="calendar-day-button${key === state.agendaSelectedDay ? " selected" : ""}${key === todayKey ? " today" : ""}" data-agenda-day="${key}" aria-pressed="${key === state.agendaSelectedDay}" aria-label="${WEEKDAYS[date.getDay()]}, ${agendaDateLabel(date, { day: "numeric", month: "long" })}${count ? `, ${count} ${count === 1 ? "sessão" : "sessões"}` : ", sem sessões"}"><small>${["seg.", "ter.", "qua.", "qui.", "sex.", "sáb.", "dom."][ (date.getDay() + 6) % 7 ]}</small><strong>${date.getDate()}</strong><i class="calendar-day-dot${count ? " has-sessions" : ""}"></i></button>`;
+    }).join("");
+    const eventMarkup = (item) => {
+      const { session, patient, time } = item,
+        status = session.attendance === "missed" ? "Faltou" : session.attendance === "rescheduled" ? "Remarcou" : session.paid ? "Pago" : "";
+      return `<div class="calendar-event${session.attendance === "missed" ? " missed" : ""}" title="${escapeHtml(patient.name)} · ${time}${status ? ` · ${status}` : ""}"><strong>${escapeHtml(patient.name)}</strong><span>${time}${status ? ` · ${status}` : ""}</span></div>`;
+    };
+    const weekCells = [`<div class="calendar-day-heading calendar-time-heading"></div>`, ...dates.map((date) => {
+      const key = dateKey(date);
+      return `<div class="calendar-day-heading${key === todayKey ? " is-today" : ""}"><small>${["seg.", "ter.", "qua.", "qui.", "sex.", "sáb.", "dom."][ (date.getDay() + 6) % 7 ]}</small><strong>${date.getDate()}</strong></div>`;
+    })];
+    for (const hour of agendaHours) {
+      weekCells.push(`<div class="calendar-time-cell">${String(hour).padStart(2, "0")}:00</div>`);
+      dates.forEach((date) => {
+        const hourItems = sessionsByDate.get(dateKey(date)).filter((item) => Number(item.time.split(":")[0]) === hour);
+        const content = hourItems.length > 1
+          ? `<div class="calendar-overlap-group"><span class="calendar-overlap-count">${hourItems.length} sessões</span>${hourItems.map((item) => `<div class="calendar-overlap-item"><strong>${escapeHtml(item.patient.name)}</strong><span>${item.time}${item.session.attendance === "missed" ? " · Faltou" : item.session.attendance === "rescheduled" ? " · Remarcou" : item.session.paid ? " · Pago" : ""}</span></div>`).join("")}</div>`
+          : hourItems.map(eventMarkup).join("");
+        weekCells.push(`<div class="calendar-hour-cell${dateKey(date) === todayKey ? " is-today" : ""}">${content}</div>`);
+      });
+    }
+    $("#agenda-week").innerHTML = weekCells.join("");
+    const selectedItems = sessionsByDate.get(state.agendaSelectedDay) || [],
+      selectedDate = dates.find((date) => dateKey(date) === state.agendaSelectedDay);
+    $("#agenda-mobile-day").innerHTML = `<h3>${agendaDateLabel(selectedDate, { weekday: "long", day: "numeric", month: "long" })}</h3>${selectedItems.length ? `<div class="calendar-day-timeline">${selectedItems.map((item) => `<div class="calendar-mobile-event"><time>${item.time}</time>${eventMarkup(item)}</div>`).join("")}</div>` : `<p class="calendar-empty-day">Nenhuma sessão agendada para este dia.</p>`}`;
+  }
   function sessionIsOverdue(session, patient, today = new Date().toLocaleDateString("sv-SE")) {
     if (session.paid || session.deleted || session.attendance === "missed" || !session.date) return false;
     const due = new Date(`${session.date}T12:00:00`);
@@ -607,6 +676,7 @@
     renderTransactions();
     renderCategories();
     renderClinic();
+    renderAgenda();
   }
   function renderPeriod() {
     const [year, month] = state.activeMonth.split("-");
@@ -952,6 +1022,27 @@
   }
   function bind() {
     bindSectionNavigation();
+    $("#agenda-prev").addEventListener("click", () => {
+      const current = state.agendaWeek || new Date();
+      state.agendaWeek = new Date(current.getFullYear(), current.getMonth(), current.getDate() - 7, 12);
+      renderAgenda();
+    });
+    $("#agenda-next").addEventListener("click", () => {
+      const current = state.agendaWeek || new Date();
+      state.agendaWeek = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 7, 12);
+      renderAgenda();
+    });
+    $("#agenda-today").addEventListener("click", () => {
+      state.agendaWeek = new Date();
+      state.agendaSelectedDay = null;
+      renderAgenda();
+    });
+    $("#agenda-mobile-days").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-agenda-day]");
+      if (!button) return;
+      state.agendaSelectedDay = button.dataset.agendaDay;
+      renderAgenda();
+    });
     bindPeriodWidget();
     document.querySelectorAll("[data-theme-choice]").forEach((button) => {
       button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));

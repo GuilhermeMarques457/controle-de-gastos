@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#ffffff" />
-    <title>Meu dinheiro — Controle financeiro</title>
+    <title>Leidiane — Psicologia e gestão da clínica</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -26,8 +26,9 @@
     <div class="app-shell">
       <aside class="sidebar">
         <a class="brand" href="#inicio"
-          ><span class="brand-mark">m</span
-          ><span>meu<span class="brand-light">dinheiro</span></span></a
+          aria-label="Leidiane — Psicologia e gestão da clínica"
+          ><span class="brand-mark" aria-hidden="true">L</span
+          ><span class="brand-name">Leidiane<span class="brand-light">Psicologia e Gestão</span></span></a
         >
         <div class="workspace-label">SEU ESPAÇO</div>
         <nav class="side-nav" aria-label="Navegação principal">
@@ -39,6 +40,9 @@
           >
           <a class="nav-link" href="#clinica"
             ><span class="nav-icon">✳</span>Clínica</a
+          >
+          <a class="nav-link" href="#agenda"
+            ><span class="nav-icon">▦</span>Agenda</a
           >
         </nav>
         <div class="sidebar-bottom">
@@ -53,11 +57,10 @@
             <span class="nav-icon">⚙</span>Configurações
           </button>
           <div class="profile">
-            <div class="avatar">G</div>
+            <div class="avatar">L</div>
             <div>
-              <strong>Meu controle</strong><small>Finanças pessoais</small>
+              <strong>Leidiane</strong><small>Psicologia</small>
             </div>
-            <span class="profile-more">···</span>
           </div>
         </div>
       </aside>
@@ -335,6 +338,30 @@
               <div class="empty-state" id="patients-empty"><div class="empty-icon">✳</div><strong id="patients-empty-title">Nenhum paciente cadastrado</strong><span id="patients-empty-copy">Cadastre um paciente para acompanhar sessões, pagamentos e frequência.</span><button class="text-button" id="empty-patient-add">＋ Novo paciente</button></div>
             </div>
             <div class="patients-footer" id="patients-totals"></div>
+          </article>
+        </section>
+
+        <section class="agenda-section" id="agenda">
+          <div class="page-heading agenda-heading">
+            <div>
+              <div class="eyebrow"><span class="eyebrow-dot"></span> ROTINA PROFISSIONAL</div>
+              <h1>Sua <span>agenda.</span></h1>
+              <p>Visualize os horários das sessões da semana.</p>
+            </div>
+          </div>
+          <article class="panel calendar-panel">
+            <div class="calendar-toolbar">
+              <div class="calendar-navigation" aria-label="Navegação da agenda">
+                <button class="calendar-today" id="agenda-today" type="button">Hoje</button>
+                <button class="calendar-arrow" id="agenda-prev" type="button" aria-label="Semana anterior">‹</button>
+                <button class="calendar-arrow" id="agenda-next" type="button" aria-label="Próxima semana">›</button>
+              </div>
+              <h2 id="agenda-week-label" aria-live="polite"></h2>
+            </div>
+            <div class="calendar-mobile-days" id="agenda-mobile-days" role="group" aria-label="Escolher dia da semana"></div>
+            <div class="calendar-week" id="agenda-week" aria-label="Agenda semanal"></div>
+            <div class="calendar-mobile-day" id="agenda-mobile-day"></div>
+            <div class="calendar-legend"><span><i class="calendar-legend-dot"></i> Sessão</span><span>Os horários refletem as sessões cadastradas em Pacientes e sessões.</span></div>
           </article>
         </section>
 
