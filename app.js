@@ -1059,14 +1059,11 @@
     document.querySelectorAll("[data-theme-choice]").forEach((button) => {
       button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
     });
-    $("#toggle-login-password").addEventListener("click", (event) => {
-      const button = event.currentTarget,
-        password = $("#login-password"),
-        reveal = password.type === "password";
-      password.type = reveal ? "text" : "password";
-      button.setAttribute("aria-pressed", String(reveal));
-      button.setAttribute("aria-label", reveal ? "Ocultar senha" : "Mostrar senha");
-      button.title = reveal ? "Ocultar senha" : "Mostrar senha";
+    document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const password = document.getElementById(button.dataset.passwordToggle);
+        if (password) setPasswordVisibility(button, password.type === "password");
+      });
     });
     $("#new-entry").addEventListener("click", prepareNew);
     $(".transaction-view-switch").addEventListener("click", (event) => {
@@ -1369,6 +1366,7 @@
       $("#current-password").value = "";
       $("#new-password").value = "";
       $("#confirm-password").value = "";
+      resetPasswordVisibility($("#change-password-form"));
       $("#settings-status").textContent = "";
       openModal("settings-modal");
     });
@@ -1690,6 +1688,17 @@
     }
     watchFirebaseRecord(context);
   }
+  function setPasswordVisibility(button, visible) {
+    const input = document.getElementById(button.dataset.passwordToggle),
+      label = visible ? button.dataset.hideLabel : button.dataset.showLabel;
+    if (input) input.type = visible ? "text" : "password";
+    button.setAttribute("aria-pressed", String(visible));
+    button.setAttribute("aria-label", label);
+    button.title = label;
+  }
+  function resetPasswordVisibility(scope) {
+    scope.querySelectorAll("[data-password-toggle]").forEach((button) => setPasswordVisibility(button, false));
+  }
   function authErrorMessage(error) {
     if (error.code === "auth/operation-not-allowed") return "O acesso ainda não está disponível. Tente novamente mais tarde.";
     if (error.code === "permission-denied") return "Não foi possível acessar os dados da clínica. Tente novamente mais tarde.";
@@ -1716,6 +1725,7 @@
       $("#app-shell").hidden = false;
       render();
       $("#login-password").value = "";
+      resetPasswordVisibility($("#firebase-login-form"));
     } catch (error) {
       if (firebaseContext) firebaseContext.user = null;
       status.textContent = authErrorMessage(error);
@@ -1741,6 +1751,7 @@
       await firebaseContext.reauthenticateWithCredential(user, credential);
       await firebaseContext.updatePassword(user, newPassword);
       $("#change-password-form").reset();
+      resetPasswordVisibility($("#change-password-form"));
       status.textContent = "Senha atualizada com sucesso.";
       status.className = "settings-status success";
     } catch (error) {
@@ -1759,6 +1770,7 @@
     $("#app-shell").hidden = true;
     $("#auth-screen").hidden = false;
     $("#login-password").value = "";
+    resetPasswordVisibility($("#firebase-login-form"));
     $("#login-status").textContent = "Você saiu da sua conta.";
     $("#login-status").className = "settings-status";
   }
