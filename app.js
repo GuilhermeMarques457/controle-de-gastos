@@ -1059,6 +1059,15 @@
     document.querySelectorAll("[data-theme-choice]").forEach((button) => {
       button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
     });
+    $("#toggle-login-password").addEventListener("click", (event) => {
+      const button = event.currentTarget,
+        password = $("#login-password"),
+        reveal = password.type === "password";
+      password.type = reveal ? "text" : "password";
+      button.setAttribute("aria-pressed", String(reveal));
+      button.setAttribute("aria-label", reveal ? "Ocultar senha" : "Mostrar senha");
+      button.title = reveal ? "Ocultar senha" : "Mostrar senha";
+    });
     $("#new-entry").addEventListener("click", prepareNew);
     $(".transaction-view-switch").addEventListener("click", (event) => {
       const button = event.target.closest("[data-transaction-view]");
@@ -1744,7 +1753,7 @@
     try {
       if (firebaseContext) await firebaseContext.signOut(firebaseContext.auth);
     } catch {}
-    firebaseContext = null;
+    if (firebaseContext) firebaseContext.user = null;
     firebaseShadow = null;
     closeModal("settings-modal");
     $("#app-shell").hidden = true;
