@@ -4,18 +4,19 @@ Aplicação web simples para registrar despesas e entradas, acompanhar o orçame
 
 ## Como abrir
 
-Abra `index.html` em um navegador moderno. A fonte e os gráficos são carregados de serviços externos, então a primeira abertura precisa de internet.
+Publique o projeto no Netlify e abra a URL do site em um navegador moderno. A tela de login e a sincronização Firebase usam a função Netlify; abrir `index.html` diretamente como arquivo não fornece essa configuração.
 
 ## Armazenamento
 
 Os dados são gravados no `localStorage` deste navegador e podem ser sincronizados com o Cloud Firestore. Para preparar o projeto Firebase:
 
-1. Ative **Authentication > E-mail/senha** no Firebase Console.
+1. Ative **Authentication > E-mail/senha** no Firebase Console e crie a conta da Leidiane na lista de usuários.
 2. Crie um banco **Cloud Firestore**.
 3. Cole o conteúdo de [`firestore.rules`](firestore.rules) na aba **Regras** e publique.
-4. No app, abra **Configurações**, cole o objeto `firebaseConfig` do app Web, e entre com a conta da Leidiane. O botão **Criar conta e conectar** cria a primeira conta, se necessário.
+4. Em **Netlify > Project configuration > Environment variables**, adicione as variáveis `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID`, `FIREBASE_STORAGE_BUCKET`, `FIREBASE_MESSAGING_SENDER_ID` e `FIREBASE_APP_ID`. A variável `FIREBASE_MEASUREMENT_ID` é opcional. Inclua o escopo **Functions** e faça um novo deploy.
+5. Publique o site pelo Netlify. A tela de login usa a conta Firebase; Configurações permite trocar a senha após reautenticar com a senha atual.
 
-O app guarda a configuração do projeto e a sessão autenticada neste navegador; a senha não é armazenada. Os dados ficam isolados em `users/{uid}` e separados em documentos de movimentações, pacientes e sessões. Ao conectar a primeira vez, se a conta Firebase ainda estiver vazia, o app importa os dados locais; também tenta ler o JSONBin antigo se as credenciais ainda estiverem salvas neste navegador. Nos outros dispositivos, entre com a mesma conta para carregar os dados do Firebase.
+O endpoint `netlify/functions/firebase-config.mjs` lê a configuração Firebase das variáveis do Netlify. A configuração de cliente do Firebase identifica o projeto e não é uma senha. As senhas dos usuários são gerenciadas pelo Firebase Authentication, nunca por variáveis Netlify ou pelo código do site. Os dados ficam isolados em `users/{uid}` e separados em documentos de movimentações, pacientes e sessões. Ao entrar pela primeira vez, se a conta Firebase ainda estiver vazia, o app importa os dados locais; também tenta ler o JSONBin antigo se as credenciais ainda estiverem salvas neste navegador. Nos outros dispositivos, entre com a mesma conta para carregar os dados do Firebase.
 
 Os salvamentos atualizam somente os documentos alterados. Se a conexão falhar, os dados locais permanecem salvos e o app informa que a sincronização não foi concluída. No Firestore, mantenha as regras publicadas: elas permitem acesso apenas à conta autenticada dona dos dados.
 

@@ -1,7 +1,6 @@
 (() => {
   "use strict";
   const STORAGE_KEY = "meuDinheiro.v1";
-  const SETTINGS_KEY = "meuDinheiro.firebase";
   const LEGACY_SETTINGS_KEY = "meuDinheiro.jsonbin";
   const FIREBASE_SDK_VERSION = "13.4.0";
   const PERIOD_WIDGET_KEY = "meuDinheiro.periodWidget";
@@ -131,7 +130,6 @@
     showAll: false,
     patientView: readPatientView(),
     transactionView: readTransactionView(),
-    settings: readSettings(),
     charts: {},
   };
   function applyTheme(theme) {
@@ -192,13 +190,6 @@
     if (!digitsBeforeCaret && formatted.startsWith("(")) nextCaret = 1;
     input.setSelectionRange(nextCaret, nextCaret);
   }
-  function readSettings() {
-    try {
-      return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-    } catch {
-      return {};
-    }
-  }
   function readLegacySettings() {
     try {
       return JSON.parse(localStorage.getItem(LEGACY_SETTINGS_KEY) || "{}");
@@ -228,18 +219,33 @@
       );
       alignInitialMonth();
     }
-    if (state.settings.firebaseConfig) {
+    let signedInUser = null;
+    try {
+      let response;
       try {
-        await restoreFirebaseSession();
+        response = await fetch("/.netlify/functions/firebase-config", { cache: "no-store" });
       } catch {
-        if (firebaseContext) firebaseContext.user = null;
-        updateSyncLabel("Firebase desconectado");
+        throw Error("Não consegui acessar a configuração Firebase. Abra o site publicado no Netlify e confira se a função firebase-config está no deploy.");
       }
+      if (response.status === 503) throw Error("A configuração Firebase ainda não foi cadastrada nas variáveis do Netlify com escopo Functions.");
+      if (!response.ok) throw Error("A função Firebase do Netlify não respondeu corretamente. Publique um novo deploy e tente novamente.");
+      const { firebaseConfig } = await response.json();
+      if (!firebaseConfig) throw Error("A configuração Firebase não foi retornada pelo Netlify. Confira as variáveis do projeto.");
+      firebaseContext = await createFirebaseContext(firebaseConfig);
+      signedInUser = await waitForFirebaseUser(firebaseContext);
+      if (signedInUser) await activateFirebaseUser(signedInUser);
+    } catch (error) {
+      signedInUser = null;
+      if (firebaseContext) firebaseContext.user = null;
+      $("#login-status").textContent = error.message || "Não foi possível iniciar a conexão segura.";
+      $("#login-status").className = "settings-status error";
     }
     if (generateRecurringEntries()) {
       alignInitialMonth();
       await saveRecurringEntries();
     }
+    $("#app-shell").hidden = !signedInUser;
+    $("#auth-screen").hidden = Boolean(signedInUser);
     render();
     bind();
     updateSyncLabel();
@@ -469,7 +475,7 @@
       text ||
       (firebaseContext?.user
         ? "Sincronizado com Firebase"
-        : state.settings.firebaseConfig
+        : firebaseContext
           ? "Firebase desconectado"
         : "Salvos neste dispositivo");
   }
@@ -1393,19 +1399,18 @@
       renderTransactions();
     });
     $("#open-settings").addEventListener("click", () => {
-      $("#firebase-config").value = state.settings.firebaseConfig
-        ? JSON.stringify(state.settings.firebaseConfig, null, 2)
-        : "";
-      $("#firebase-password").value = "";
-      $("#firebase-email").value = firebaseContext?.user?.email || "";
+      $("#firebase-account-label").textContent = firebaseContext?.user?.email || "";
+      $("#current-password").value = "";
+      $("#new-password").value = "";
+      $("#confirm-password").value = "";
       $("#settings-status").textContent = "";
       openModal("settings-modal");
     });
     $("#open-settings-mobile").addEventListener("click", () =>
       $("#open-settings").click(),
     );
-    $("#save-settings").addEventListener("click", () => connectFirebase(false));
-    $("#create-firebase-account").addEventListener("click", () => connectFirebase(true));
+    $("#firebase-login-form").addEventListener("submit", loginFirebase);
+    $("#change-password-form").addEventListener("submit", changeFirebasePassword);
     $("#refresh-data").addEventListener("click", refreshFromFirebase);
     $("#disconnect-firebase").addEventListener("click", disconnectFirebase);
     document
@@ -1552,24 +1557,6 @@
   function cloneData(value) {
     return JSON.parse(JSON.stringify(value));
   }
-  function parseFirebaseConfig(raw) {
-    const text = String(raw || "").trim(),
-      scriptConfig = text.match(/(?:const|let|var)\s+firebaseConfig\s*=\s*(\{[\s\S]*?\})\s*;?/i),
-      objectText = scriptConfig ? scriptConfig[1] : text,
-      config = (() => {
-        try {
-          return JSON.parse(objectText);
-        } catch {
-          const body = objectText.slice(objectText.indexOf("{") + 1, objectText.lastIndexOf("}")),
-            properties = [...body.matchAll(/(?:^|,)\s*([A-Za-z_$][\w$]*)\s*:\s*("(?:\\.|[^"\\])*"|true|false|null|-?\d+(?:\.\d+)?)/g)];
-          if (!properties.length) throw Error("Cole o objeto firebaseConfig completo copiado do Firebase.");
-          return Object.fromEntries(properties.map(([, key, value]) => [key, JSON.parse(value)]));
-        }
-      })();
-    if (!config.apiKey || !config.projectId || !config.appId || !config.authDomain)
-      throw Error("A configuração precisa conter apiKey, authDomain, projectId e appId.");
-    return config;
-  }
   async function loadFirebaseSdk() {
     if (!firebaseSdkPromise) {
       const base = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
@@ -1678,10 +1665,8 @@
       data = response.record || response;
     return Array.isArray(data.entries) ? data : null;
   }
-  async function restoreFirebaseSession() {
-    const context = await createFirebaseContext(state.settings.firebaseConfig),
-      user = await waitForFirebaseUser(context);
-    if (!user) return;
+  async function activateFirebaseUser(user) {
+    const context = firebaseContext;
     context.user = user;
     const remote = await readFirebaseRecord(context);
     if (remote.exists) {
@@ -1701,57 +1686,62 @@
     persistLocal();
     updateSyncLabel("Sincronizado com Firebase");
   }
-  async function connectFirebase(createAccount) {
-    const status = $("#settings-status"),
-      email = $("#firebase-email").value.trim(),
-      password = $("#firebase-password").value,
-      previousSettings = state.settings;
+  function authErrorMessage(error) {
+    if (error.code === "auth/operation-not-allowed") return "O login por e-mail e senha não está ativo no Firebase.";
+    if (error.code === "permission-denied") return "O Firestore recusou o acesso. Confira as regras de segurança.";
+    if (["auth/invalid-credential", "auth/invalid-login-credentials", "auth/user-not-found", "auth/wrong-password"].includes(error.code)) return "E-mail ou senha incorretos.";
+    if (error.code === "auth/too-many-requests") return "Muitas tentativas. Aguarde um pouco e tente novamente.";
+    if (error.code === "auth/requires-recent-login") return "Entre novamente antes de trocar a senha.";
+    return error.message || "Não foi possível concluir a operação.";
+  }
+  async function loginFirebase(event) {
+    event.preventDefault();
+    const status = $("#login-status"), button = $("#login-submit"),
+      email = $("#login-email").value.trim(),
+      password = $("#login-password").value;
+    status.textContent = "Entrando…";
     status.className = "settings-status";
+    button.disabled = true;
     try {
-      const config = parseFirebaseConfig($("#firebase-config").value);
-      if (!email || !password) throw Error("Informe o e-mail e a senha da conta Firebase.");
-      status.textContent = createAccount ? "Criando conta e conectando…" : "Conectando ao Firebase…";
-      const context = await createFirebaseContext(config),
-        credential = createAccount
-          ? await context.createUserWithEmailAndPassword(context.auth, email, password)
-          : await context.signInWithEmailAndPassword(context.auth, email, password);
-      context.user = credential.user;
-      const remote = await readFirebaseRecord(context);
-      if (remote.exists) {
-        applyData(remote.data);
-      } else {
-        let seed = null;
-        status.textContent = "Importando seus dados e preparando a sincronização…";
-        try { seed = await legacyJsonBinRecord(); } catch {}
-        seed ||= readLocal();
-        if (seed) applyData(seed);
-        await syncFirebaseRecord(dataRecord());
-      }
-      state.settings = { firebaseConfig: config };
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+      if (!firebaseContext) throw Error("Firebase não está configurado no Netlify.");
+      const credential = await firebaseContext.signInWithEmailAndPassword(firebaseContext.auth, email, password);
+      await activateFirebaseUser(credential.user);
       alignInitialMonth();
       persistLocal();
+      $("#auth-screen").hidden = true;
+      $("#app-shell").hidden = false;
       render();
+      $("#login-password").value = "";
       updateSyncLabel("Sincronizado com Firebase");
-      status.textContent = remote.exists
-        ? `Conectado como ${credential.user.email}. Os dados foram carregados do Firebase.`
-        : `Conectado como ${credential.user.email}. Os dados deste dispositivo foram sincronizados.`;
-      status.className = "settings-status success";
-      $("#firebase-password").value = "";
-      setTimeout(() => closeModal("settings-modal"), 1400);
     } catch (error) {
       if (firebaseContext) firebaseContext.user = null;
-      state.settings = previousSettings;
-      if (previousSettings.firebaseConfig) localStorage.setItem(SETTINGS_KEY, JSON.stringify(previousSettings));
-      else localStorage.removeItem(SETTINGS_KEY);
-      const message = error.code === "auth/operation-not-allowed"
-        ? "Ative o provedor E-mail/senha em Authentication no Firebase Console."
-        : error.code === "permission-denied"
-          ? "O Firestore recusou o acesso. Configure as regras de segurança do projeto."
-          : error.code === "auth/invalid-credential" || error.code === "auth/invalid-login-credentials"
-            ? "E-mail ou senha inválidos. Confira os dados ou crie a conta."
-            : error.message || "Não foi possível conectar ao Firebase.";
-      status.textContent = message;
+      status.textContent = authErrorMessage(error);
+      status.className = "settings-status error";
+    } finally {
+      button.disabled = false;
+    }
+  }
+  async function changeFirebasePassword(event) {
+    event.preventDefault();
+    const status = $("#settings-status"),
+      currentPassword = $("#current-password").value,
+      newPassword = $("#new-password").value,
+      confirmPassword = $("#confirm-password").value,
+      user = firebaseContext?.user;
+    status.className = "settings-status";
+    try {
+      if (!user?.email) throw Error("Entre na conta antes de trocar a senha.");
+      if (newPassword.length < 6) throw Error("A nova senha precisa ter pelo menos 6 caracteres.");
+      if (newPassword !== confirmPassword) throw Error("A confirmação da nova senha não corresponde.");
+      status.textContent = "Atualizando senha…";
+      const credential = firebaseContext.EmailAuthProvider.credential(user.email, currentPassword);
+      await firebaseContext.reauthenticateWithCredential(user, credential);
+      await firebaseContext.updatePassword(user, newPassword);
+      $("#change-password-form").reset();
+      status.textContent = "Senha atualizada com sucesso.";
+      status.className = "settings-status success";
+    } catch (error) {
+      status.textContent = authErrorMessage(error);
       status.className = "settings-status error";
     }
   }
@@ -1791,13 +1781,13 @@
     } catch {}
     firebaseContext = null;
     firebaseShadow = null;
-    state.settings = {};
-    localStorage.removeItem(SETTINGS_KEY);
-    $("#firebase-config").value = "";
-    $("#firebase-password").value = "";
     closeModal("settings-modal");
+    $("#app-shell").hidden = true;
+    $("#auth-screen").hidden = false;
+    $("#login-password").value = "";
+    $("#login-status").textContent = "Você saiu da sua conta.";
+    $("#login-status").className = "settings-status";
     updateSyncLabel();
-    toast("Firebase desconectado. Seus dados locais foram mantidos.");
   }
   function parseCSV(text) {
     let rows = [],

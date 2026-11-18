@@ -23,7 +23,20 @@
     <script src="app.js" defer></script>
   </head>
   <body>
-    <div class="app-shell">
+    <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
+      <form class="auth-card" id="firebase-login-form">
+        <span class="brand-mark auth-brand-mark" aria-hidden="true">L</span>
+        <p class="eyebrow">LEIDIANE · PSICOLOGIA</p>
+        <h1 id="auth-title">Acesse sua clínica</h1>
+        <p class="auth-description">Entre com sua conta para abrir a agenda e os dados da clínica.</p>
+        <label class="field-label">E-mail<input id="login-email" type="email" autocomplete="username" required /></label>
+        <label class="field-label">Senha<input id="login-password" type="password" autocomplete="current-password" required /></label>
+        <div class="settings-status" id="login-status" role="status"></div>
+        <button class="primary-button auth-submit" id="login-submit" type="submit">Entrar</button>
+        <small>Se ainda não tem uma conta, peça para ela ser criada no Firebase Console.</small>
+      </form>
+    </section>
+    <div class="app-shell" id="app-shell" hidden>
       <aside class="sidebar">
         <a class="brand" href="#inicio"
           aria-label="Leidiane — Psicologia e gestão da clínica"
@@ -566,14 +579,15 @@
             <button class="theme-swatch theme-swatch-pink" type="button" data-theme-choice="pink" aria-label="Rosa Marie Key" title="Rosa Marie Key"></button>
           </div>
         </div>
-        <p class="settings-copy">
-          Para sincronizar, cole a configuração do app Firebase e entre com a
-          conta da Leidiane. A configuração e a sessão ficam neste navegador;
-          a senha não é armazenada pelo app.
-        </p>
-        <label class="field-label">Configuração do Firebase<textarea id="firebase-config" rows="5" spellcheck="false" placeholder='Cole aqui o objeto firebaseConfig'></textarea></label>
-        <label class="field-label">E-mail<input id="firebase-email" type="email" autocomplete="username" placeholder="E-mail da conta Firebase" /></label>
-        <label class="field-label">Senha<input id="firebase-password" type="password" autocomplete="current-password" placeholder="Senha da conta Firebase" /></label>
+        <p class="settings-copy">A sessão está protegida pela sua conta Firebase. A configuração do app é carregada do Netlify.</p>
+        <p class="settings-copy" id="firebase-account-label"></p>
+        <form id="change-password-form" class="password-change-form">
+          <h3>Trocar senha</h3>
+          <label class="field-label">Senha atual<input id="current-password" type="password" autocomplete="current-password" required /></label>
+          <label class="field-label">Nova senha<input id="new-password" type="password" autocomplete="new-password" minlength="6" required /></label>
+          <label class="field-label">Confirmar nova senha<input id="confirm-password" type="password" autocomplete="new-password" minlength="6" required /></label>
+          <button class="secondary-button" type="submit">Atualizar senha</button>
+        </form>
         <div class="settings-status" id="settings-status"></div>
         <button
           class="secondary-button refresh-data-button"
@@ -584,12 +598,11 @@
         </button>
         <div class="modal-actions">
           <button class="secondary-button" id="disconnect-firebase" type="button">
-            Usar só neste dispositivo</button
-          ><button class="primary-button" id="save-settings" type="button">
-            Entrar e sincronizar
+            Sair da conta</button
+          ><button class="primary-button" data-close="settings-modal" type="button">
+            Concluído
           </button>
         </div>
-        <button class="text-button firebase-create-account" id="create-firebase-account" type="button">Criar conta e conectar</button>
       </section>
     </div>
     <div class="modal-backdrop" id="pots-modal" aria-hidden="true">
