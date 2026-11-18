@@ -272,11 +272,26 @@
     const [year, month, day] = date.split("-").map(Number);
     return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
   }
+  function clinicSessionsForStorage(sessions = state.clinicSessions) {
+    const [year, month] = localMonth().split("-").map(Number),
+      nextMonthDate = new Date(year, month, 1),
+      nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}`;
+    return sessions.filter((session) => {
+      const sessionMonth = String(session.date || "").slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(sessionMonth) || sessionMonth <= nextMonth) return true;
+      if (session.kind !== "regular" || session.deleted || session.paid || session.attendance && session.attendance !== "pending" || session.note) return true;
+      const patient = state.patients.find((item) => item.id === session.patientId);
+      if (!patient) return true;
+      const scheduledDate = session.scheduledDate || session.originalDate || session.date;
+      return session.date !== scheduledDate ||
+        Number(session.amount || 0) !== Number(patient.price || 0);
+    });
+  }
   function dataRecord() {
     return {
       entries: state.entries,
       patients: state.patients,
-      clinicSessions: state.clinicSessions,
+      clinicSessions: clinicSessionsForStorage(),
       potPercentages: state.potPercentages,
       categories: state.categories,
       importedThrough: state.importedThrough,
@@ -369,7 +384,7 @@
           version: 1,
           entries: state.entries,
           patients: state.patients,
-          clinicSessions: state.clinicSessions,
+          clinicSessions: clinicSessionsForStorage(),
           potPercentages: state.potPercentages,
           categories: state.categories,
           importedThrough: state.importedThrough,
