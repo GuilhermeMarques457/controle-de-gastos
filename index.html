@@ -23,8 +23,14 @@
     <script src="app.js" defer></script>
   </head>
   <body>
-    <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
-      <form class="auth-card" id="firebase-login-form">
+    <section class="auth-screen" id="auth-screen" aria-label="Acesso à clínica">
+      <div class="auth-card auth-loading" id="auth-loading" role="status">
+        <span class="brand-mark auth-brand-mark" aria-hidden="true">L</span>
+        <p class="eyebrow">LEIDIANE · PSICOLOGIA</p>
+        <h1>Verificando sua sessão…</h1>
+        <span class="auth-spinner" aria-hidden="true"></span>
+      </div>
+      <form class="auth-card" id="firebase-login-form" hidden>
         <span class="brand-mark auth-brand-mark" aria-hidden="true">L</span>
         <p class="eyebrow">LEIDIANE · PSICOLOGIA</p>
         <h1 id="auth-title">Acesse sua clínica</h1>
@@ -33,7 +39,7 @@
         <label class="field-label">Senha<input id="login-password" type="password" autocomplete="current-password" required /></label>
         <div class="settings-status" id="login-status" role="status"></div>
         <button class="primary-button auth-submit" id="login-submit" type="submit">Entrar</button>
-        <small>Se ainda não tem uma conta, peça para ela ser criada no Firebase Console.</small>
+        <small>Use a conta de acesso da clínica para entrar.</small>
       </form>
     </section>
     <div class="app-shell" id="app-shell" hidden>
@@ -59,13 +65,6 @@
           >
         </nav>
         <div class="sidebar-bottom">
-          <div class="sync-card">
-            <span class="sync-dot"></span>
-            <div>
-              <strong>Seus dados seguros</strong
-              ><small id="sync-label">Salvos neste dispositivo</small>
-            </div>
-          </div>
           <button class="nav-link settings-link" id="open-settings">
             <span class="nav-icon">⚙</span>Configurações
           </button>
@@ -579,8 +578,6 @@
             <button class="theme-swatch theme-swatch-pink" type="button" data-theme-choice="pink" aria-label="Rosa Marie Key" title="Rosa Marie Key"></button>
           </div>
         </div>
-        <p class="settings-copy">A sessão está protegida pela sua conta Firebase. A configuração do app é carregada do Netlify.</p>
-        <p class="settings-copy" id="firebase-account-label"></p>
         <form id="change-password-form" class="password-change-form">
           <h3>Trocar senha</h3>
           <label class="field-label">Senha atual<input id="current-password" type="password" autocomplete="current-password" required /></label>
@@ -589,13 +586,6 @@
           <button class="secondary-button" type="submit">Atualizar senha</button>
         </form>
         <div class="settings-status" id="settings-status"></div>
-        <button
-          class="secondary-button refresh-data-button"
-          id="refresh-data"
-          type="button"
-        >
-          ↻ Atualizar do Firebase
-        </button>
         <div class="modal-actions">
           <button class="secondary-button" id="disconnect-firebase" type="button">
             Sair da conta</button

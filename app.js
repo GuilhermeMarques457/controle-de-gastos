@@ -94,6 +94,7 @@
   let firebaseSdkPromise = null;
   let firebaseContext = null;
   let firebaseShadow = null;
+  let firebaseWatchUnsubscribers = [];
   const localMonth = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -206,19 +207,6 @@
     }
   }
   async function boot() {
-    const local = readLocal();
-    if (local) {
-      state.entries = local.entries;
-      state.patients = Array.isArray(local.patients) ? local.patients : [];
-      state.clinicSessions = Array.isArray(local.clinicSessions) ? local.clinicSessions : [];
-      state.potPercentages = { ...state.potPercentages, ...(local.potPercentages || {}) };
-      state.categories = mergeCategories(local.categories || []);
-      state.importedThrough = mergeStatementCheckpoints(
-        local.importedThrough,
-        state.entries,
-      );
-      alignInitialMonth();
-    }
     let signedInUser = null;
     try {
       let response;
@@ -229,15 +217,16 @@
       }
       if (response.status === 503) throw Error("A configuração Firebase ainda não foi cadastrada nas variáveis do Netlify com escopo Functions.");
       if (!response.ok) throw Error("A função Firebase do Netlify não respondeu corretamente. Publique um novo deploy e tente novamente.");
-      const { firebaseConfig } = await response.json();
+      const payload = await response.json(), firebaseConfig = payload.firebaseConfig;
       if (!firebaseConfig) throw Error("A configuração Firebase não foi retornada pelo Netlify. Confira as variáveis do projeto.");
+      try { localStorage.removeItem("leidiane.firebaseConfigCache"); } catch {}
       firebaseContext = await createFirebaseContext(firebaseConfig);
       signedInUser = await waitForFirebaseUser(firebaseContext);
       if (signedInUser) await activateFirebaseUser(signedInUser);
     } catch (error) {
       signedInUser = null;
       if (firebaseContext) firebaseContext.user = null;
-      $("#login-status").textContent = error.message || "Não foi possível iniciar a conexão segura.";
+      $("#login-status").textContent = "Não foi possível conectar ao sistema. Atualize a página e tente novamente.";
       $("#login-status").className = "settings-status error";
     }
     if (generateRecurringEntries()) {
@@ -246,9 +235,10 @@
     }
     $("#app-shell").hidden = !signedInUser;
     $("#auth-screen").hidden = Boolean(signedInUser);
+    $("#auth-loading").hidden = true;
+    $("#firebase-login-form").hidden = Boolean(signedInUser);
     render();
     bind();
-    updateSyncLabel();
   }
   function mergeCategories(items) {
     return [...new Set([...DEFAULT_CATEGORIES, ...items].filter(Boolean))];
@@ -390,7 +380,6 @@
       try {
         await syncFirebaseRecord(dataRecord());
       } catch {
-        updateSyncLabel("Salvo neste dispositivo");
       }
     }
   }
@@ -401,7 +390,7 @@
     );
     state.activeMonth = latest;
   }
-  function applyData(data) {
+  function applyData(data, { clearLocal = true } = {}) {
     if (data && Array.isArray(data.entries)) {
       state.entries = data.entries;
       state.patients = Array.isArray(data.patients) ? data.patients : [];
@@ -412,45 +401,23 @@
         data.importedThrough,
         state.entries,
       );
-      persistLocal();
+      if (clearLocal) persistLocal();
     }
   }
   function persistLocal() {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          version: 1,
-          entries: state.entries,
-          patients: state.patients,
-          clinicSessions: clinicSessionsForStorage(),
-          potPercentages: state.potPercentages,
-          categories: state.categories,
-          importedThrough: state.importedThrough,
-          updatedAt: new Date().toISOString(),
-        }),
-      );
-    } catch {
-      toast(
-        "O armazenamento local está cheio. Exporte seus dados para liberar espaço.",
-      );
-    }
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
   async function saveData(message = "Movimentação salva.") {
     persistLocal();
     render();
     if (firebaseContext?.user) {
-      updateSyncLabel("Sincronizando…");
       try {
         await syncFirebaseRecord(dataRecord());
-        updateSyncLabel("Sincronizado com Firebase");
         toast(message);
-      } catch (error) {
-        updateSyncLabel("Salvo neste dispositivo");
-        toast(`${message} Firebase indisponível; os dados locais estão salvos.`);
+      } catch {
+        toast("Não foi possível salvar. Verifique sua conexão e tente novamente; a alteração não foi gravada.");
       }
     } else {
-      updateSyncLabel();
       toast(message);
     }
   }
@@ -469,15 +436,6 @@
     });
     if (!response.ok) throw Error(`JSONBin respondeu ${response.status}`);
     return response.json();
-  }
-  function updateSyncLabel(text) {
-    $("#sync-label").textContent =
-      text ||
-      (firebaseContext?.user
-        ? "Sincronizado com Firebase"
-        : firebaseContext
-          ? "Firebase desconectado"
-        : "Salvos neste dispositivo");
   }
   function monthLabel(ym) {
     if (!ym) return "";
@@ -1399,7 +1357,6 @@
       renderTransactions();
     });
     $("#open-settings").addEventListener("click", () => {
-      $("#firebase-account-label").textContent = firebaseContext?.user?.email || "";
       $("#current-password").value = "";
       $("#new-password").value = "";
       $("#confirm-password").value = "";
@@ -1411,7 +1368,6 @@
     );
     $("#firebase-login-form").addEventListener("submit", loginFirebase);
     $("#change-password-form").addEventListener("submit", changeFirebasePassword);
-    $("#refresh-data").addEventListener("click", refreshFromFirebase);
     $("#disconnect-firebase").addEventListener("click", disconnectFirebase);
     document
       .querySelectorAll("[data-close]")
@@ -1618,9 +1574,47 @@
         importedThrough: meta.importedThrough || {},
         updatedAt: meta.updatedAt || "",
       },
-      exists = metadata.exists() || entries.size > 0 || patients.size > 0 || clinicSessions.size > 0;
-    firebaseShadow = exists ? cloneData(data) : null;
-    return { data, exists };
+      exists = entries.size > 0 || patients.size > 0 || clinicSessions.size > 0;
+    firebaseShadow = exists || metadata.exists() ? cloneData(data) : null;
+    return { data, exists, metadataExists: metadata.exists() };
+  }
+  function stopFirebaseWatch() {
+    firebaseWatchUnsubscribers.forEach((unsubscribe) => unsubscribe());
+    firebaseWatchUnsubscribers = [];
+  }
+  function watchFirebaseRecord(context) {
+    stopFirebaseWatch();
+    const live = { entries: [], patients: [], clinicSessions: [], metadata: {} }, ready = new Set();
+    const publish = (key, value) => {
+      live[key] = value;
+      ready.add(key);
+      if (ready.size < 4 || firebaseContext !== context || !context.user) return;
+      const data = {
+        entries: live.entries,
+        patients: live.patients,
+        clinicSessions: live.clinicSessions,
+        potPercentages: { accounts: 50, wishes: 30, future: 20, ...(live.metadata.potPercentages || {}) },
+        categories: mergeCategories(live.metadata.categories || []),
+        importedThrough: live.metadata.importedThrough || {},
+        updatedAt: live.metadata.updatedAt || "",
+      };
+      firebaseShadow = cloneData(data);
+      firebaseShadow.metadata = live.metadata;
+      applyData(data);
+      alignInitialMonth();
+      render();
+    };
+    const watchCollection = (name) => context.onSnapshot(
+      firebaseCollection(context, name),
+      (snapshot) => publish(name, snapshot.docs.map((item) => item.data())),
+      () => {},
+    );
+    firebaseWatchUnsubscribers = [
+      watchCollection("entries"),
+      watchCollection("patients"),
+      watchCollection("clinicSessions"),
+      context.onSnapshot(firebaseMetaDocument(context), (snapshot) => publish("metadata", snapshot.exists() ? snapshot.data() : {}), () => {}),
+    ];
   }
   async function syncFirebaseRecord(record = dataRecord()) {
     if (!firebaseContext?.user) throw Error("Entre na conta Firebase para sincronizar.");
@@ -1672,27 +1666,28 @@
     if (remote.exists) {
       applyData(remote.data);
       alignInitialMonth();
-      updateSyncLabel("Sincronizado com Firebase");
+      watchFirebaseRecord(context);
       return;
     }
     let seed = null;
     try { seed = await legacyJsonBinRecord(); } catch {}
     seed ||= readLocal();
+    if (!seed && remote.metadataExists) applyData(remote.data);
     if (seed) {
-      applyData(seed);
+      applyData(seed, { clearLocal: false });
       alignInitialMonth();
+      await syncFirebaseRecord(dataRecord());
+      persistLocal();
     }
-    await syncFirebaseRecord(dataRecord());
-    persistLocal();
-    updateSyncLabel("Sincronizado com Firebase");
+    watchFirebaseRecord(context);
   }
   function authErrorMessage(error) {
-    if (error.code === "auth/operation-not-allowed") return "O login por e-mail e senha não está ativo no Firebase.";
-    if (error.code === "permission-denied") return "O Firestore recusou o acesso. Confira as regras de segurança.";
+    if (error.code === "auth/operation-not-allowed") return "O acesso ainda não está disponível. Tente novamente mais tarde.";
+    if (error.code === "permission-denied") return "Não foi possível acessar os dados da clínica. Tente novamente mais tarde.";
     if (["auth/invalid-credential", "auth/invalid-login-credentials", "auth/user-not-found", "auth/wrong-password"].includes(error.code)) return "E-mail ou senha incorretos.";
     if (error.code === "auth/too-many-requests") return "Muitas tentativas. Aguarde um pouco e tente novamente.";
     if (error.code === "auth/requires-recent-login") return "Entre novamente antes de trocar a senha.";
-    return error.message || "Não foi possível concluir a operação.";
+    return "Não foi possível concluir. Verifique sua conexão e tente novamente.";
   }
   async function loginFirebase(event) {
     event.preventDefault();
@@ -1712,7 +1707,6 @@
       $("#app-shell").hidden = false;
       render();
       $("#login-password").value = "";
-      updateSyncLabel("Sincronizado com Firebase");
     } catch (error) {
       if (firebaseContext) firebaseContext.user = null;
       status.textContent = authErrorMessage(error);
@@ -1745,37 +1739,8 @@
       status.className = "settings-status error";
     }
   }
-  async function refreshFromFirebase() {
-    const button = $("#refresh-data"), status = $("#settings-status");
-    if (!firebaseContext?.user) {
-      status.textContent = "Entre na conta Firebase antes de atualizar os dados.";
-      status.className = "settings-status error";
-      return;
-    }
-    button.disabled = true;
-    button.textContent = "Atualizando…";
-    status.textContent = "Buscando os dados mais recentes do Firebase…";
-    status.className = "settings-status";
-    try {
-      const remote = await readFirebaseRecord();
-      if (!remote.exists) throw Error("Não há dados sincronizados nesta conta Firebase.");
-      applyData(remote.data);
-      alignInitialMonth();
-      persistLocal();
-      render();
-      updateSyncLabel("Sincronizado com Firebase");
-      status.textContent = "Dados atualizados do Firebase neste dispositivo.";
-      status.className = "settings-status success";
-      toast("Dados atualizados do Firebase.");
-    } catch (error) {
-      status.textContent = error.message || "Não foi possível atualizar do Firebase.";
-      status.className = "settings-status error";
-    } finally {
-      button.disabled = false;
-      button.textContent = "↻ Atualizar do Firebase";
-    }
-  }
   async function disconnectFirebase() {
+    stopFirebaseWatch();
     try {
       if (firebaseContext) await firebaseContext.signOut(firebaseContext.auth);
     } catch {}
@@ -1787,7 +1752,6 @@
     $("#login-password").value = "";
     $("#login-status").textContent = "Você saiu da sua conta.";
     $("#login-status").className = "settings-status";
-    updateSyncLabel();
   }
   function parseCSV(text) {
     let rows = [],
