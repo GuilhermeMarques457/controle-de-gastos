@@ -1,4 +1,4 @@
-# Meu dinheiro
+# Leidiane — Psicologia e gestão da clínica
 
 Aplicação web simples para registrar despesas e entradas, acompanhar o orçamento por mês e importar as planilhas CSV.
 
@@ -8,15 +8,16 @@ Abra `index.html` em um navegador moderno. A fonte e os gráficos são carregado
 
 ## Armazenamento
 
-Os lançamentos são gravados no `localStorage` deste navegador. Para sincronizar também com JSONBin:
+Os dados são gravados no `localStorage` deste navegador e podem ser sincronizados com o Cloud Firestore. Para preparar o projeto Firebase:
 
-1. Crie uma conta e um bin JSON no [JSONBin.io](https://jsonbin.io/).
-2. No app, abra **Configurações**.
-3. Informe o ID do bin e sua `X-Master-Key`.
+1. Ative **Authentication > E-mail/senha** no Firebase Console.
+2. Crie um banco **Cloud Firestore**.
+3. Cole o conteúdo de [`firestore.rules`](firestore.rules) na aba **Regras** e publique.
+4. No app, abra **Configurações**, cole o objeto `firebaseConfig` do app Web, e entre com a conta da Leidiane. O botão **Criar conta e conectar** cria a primeira conta, se necessário.
 
-Ao conectar um bin vazio, o app cria o registro com seus dados locais. Ao conectar um bin existente, os registros locais são enviados para ele. Se o app ainda não tiver dados locais, busca os dados do bin. Cada salvamento atualiza os dois armazenamentos; se a rede falhar, a cópia local permanece salva e o app informa a falha de sincronização. As credenciais ficam no armazenamento deste navegador. Não compartilhe a chave mestra.
+O app guarda a configuração do projeto e a sessão autenticada neste navegador; a senha não é armazenada. Os dados ficam isolados em `users/{uid}` e separados em documentos de movimentações, pacientes e sessões. Ao conectar a primeira vez, se a conta Firebase ainda estiver vazia, o app importa os dados locais; também tenta ler o JSONBin antigo se as credenciais ainda estiverem salvas neste navegador. Nos outros dispositivos, entre com a mesma conta para carregar os dados do Firebase.
 
-O app usa a API v3 do JSONBin com um bin dedicado, sem versionamento do histórico para manter o conteúdo atual sincronizado. Guarde uma cópia dos seus dados se precisar de histórico de versões.
+Os salvamentos atualizam somente os documentos alterados. Se a conexão falhar, os dados locais permanecem salvos e o app informa que a sincronização não foi concluída. No Firestore, mantenha as regras publicadas: elas permitem acesso apenas à conta autenticada dona dos dados.
 
 ## Importar CSV
 
@@ -49,7 +50,7 @@ No formulário, as categorias sugeridas acompanham o tipo selecionado: despesas 
 - Para cada sessão, registre presença (a confirmar, compareceu, faltou ou remarcou), valor e pagamento. Sessões pagas entram como receita da categoria **Atendimentos clínicos** no resumo e no fluxo financeiro, separadas dos lançamentos de salário.
 - As despesas podem ser classificadas como fixas, parceladas, recorrentes, únicas ou emergenciais, com vencimento no prazo, adiantado ou atrasado. Marque **Já foi pago** para contar a despesa como saída e escolha o pote que ela reduz.
 - A divisão inicial dos potes é **Contas 50%**, **Desejos 30%** e **Futuro 20%**. Ela pode ser ajustada; as entradas do mês são distribuídas pelas porcentagens e as despesas pagas reduzem o saldo disponível do pote escolhido.
-- Os dados de pacientes, sessões e potes ficam junto aos demais dados locais e também são incluídos no JSONBin quando a sincronização está conectada.
+- Os dados de pacientes, sessões e potes ficam junto aos demais dados locais e são sincronizados com o Firestore quando uma conta está conectada.
 
 ## Arquivos
 

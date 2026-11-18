@@ -488,7 +488,7 @@
           <input type="hidden" id="patient-id" />
           <label class="field-label">Nome do paciente<input id="patient-name" required maxlength="80" placeholder="Nome" /></label>
           <div class="field-row">
-            <label class="field-label">Telefone<input id="patient-phone" type="tel" maxlength="30" placeholder="(00) 00000-0000" /></label>
+            <label class="field-label">Telefone<input id="patient-phone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="15" placeholder="(00) 00000-0000" /></label>
             <label class="field-label">Frequência<select id="patient-frequency"><option value="weekly">Semanal</option><option value="biweekly">Quinzenal</option><option value="monthly">Mensal</option></select></label>
           </div>
           <div class="field-row">
@@ -567,37 +567,29 @@
           </div>
         </div>
         <p class="settings-copy">
-          Seus dados ficam salvos neste dispositivo. Para sincronizar com o
-          JSONBin, informe o ID do bin e sua chave de acesso. As credenciais
-          ficam apenas neste navegador.
+          Para sincronizar, cole a configuração do app Firebase e entre com a
+          conta da Leidiane. A configuração e a sessão ficam neste navegador;
+          a senha não é armazenada pelo app.
         </p>
-        <p class="settings-copy">
-          Atualizar substitui os dados deste dispositivo pela versão mais
-          recente do JSONBin. Sua chave e o ID do bin serão mantidos.
-        </p>
-        <label class="field-label"
-          >Bin ID<input id="bin-id" placeholder="ID do seu JSONBin" /></label
-        ><label class="field-label"
-          >X-Master-Key<input
-            id="bin-key"
-            type="password"
-            placeholder="$2a$10$…"
-        /></label>
+        <label class="field-label">Configuração do Firebase<textarea id="firebase-config" rows="5" spellcheck="false" placeholder='Cole aqui o objeto firebaseConfig'></textarea></label>
+        <label class="field-label">E-mail<input id="firebase-email" type="email" autocomplete="username" placeholder="E-mail da conta Firebase" /></label>
+        <label class="field-label">Senha<input id="firebase-password" type="password" autocomplete="current-password" placeholder="Senha da conta Firebase" /></label>
         <div class="settings-status" id="settings-status"></div>
         <button
           class="secondary-button refresh-data-button"
           id="refresh-data"
           type="button"
         >
-          ↻ Atualizar dados
+          ↻ Atualizar do Firebase
         </button>
         <div class="modal-actions">
-          <button class="secondary-button" id="disconnect-bin" type="button">
+          <button class="secondary-button" id="disconnect-firebase" type="button">
             Usar só neste dispositivo</button
           ><button class="primary-button" id="save-settings" type="button">
-            Conectar JSONBin
+            Entrar e sincronizar
           </button>
         </div>
+        <button class="text-button firebase-create-account" id="create-firebase-account" type="button">Criar conta e conectar</button>
       </section>
     </div>
     <div class="modal-backdrop" id="pots-modal" aria-hidden="true">

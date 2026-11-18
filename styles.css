@@ -4323,3 +4323,23 @@ td {
 .theme-swatch:hover { transform: scale(1.08); }
 .theme-swatch.active { box-shadow: 0 0 0 2px var(--brand-deep); }
 .theme-swatch:focus-visible { outline: 3px solid var(--brand-focus); outline-offset: 3px; }
+.settings-modal textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 112px;
+  padding: 11px 12px;
+  border: 1px solid #d9ded8;
+  border-radius: 9px;
+  color: #314238;
+  background: #fff;
+  font: 12px/1.45 ui-monospace, Consolas, monospace;
+  resize: vertical;
+}
+.settings-modal textarea:focus {
+  outline: 2px solid var(--brand-focus);
+  outline-offset: 1px;
+}
+.firebase-create-account {
+  display: block;
+  margin: 12px auto 0;
+}

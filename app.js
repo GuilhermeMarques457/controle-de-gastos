@@ -1,7 +1,9 @@
 (() => {
   "use strict";
   const STORAGE_KEY = "meuDinheiro.v1";
-  const SETTINGS_KEY = "meuDinheiro.jsonbin";
+  const SETTINGS_KEY = "meuDinheiro.firebase";
+  const LEGACY_SETTINGS_KEY = "meuDinheiro.jsonbin";
+  const FIREBASE_SDK_VERSION = "13.4.0";
   const PERIOD_WIDGET_KEY = "meuDinheiro.periodWidget";
   const PATIENT_VIEW_KEY = "meuDinheiro.patientView";
   const TRANSACTION_VIEW_KEY = "meuDinheiro.transactionView";
@@ -90,6 +92,9 @@
     "dezembro",
   ];
   const $ = (selector) => document.querySelector(selector);
+  let firebaseSdkPromise = null;
+  let firebaseContext = null;
+  let firebaseShadow = null;
   const localMonth = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -162,9 +167,41 @@
           "'": "&#39;",
         })[c],
     );
+  function formatBrazilianPhone(value) {
+    let digits = String(value || "").replace(/\D/g, "");
+    if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) digits = digits.slice(2);
+    digits = digits.slice(0, 11);
+    if (!digits) return "";
+    if (digits.length <= 2) return `(${digits}`;
+    const area = digits.slice(0, 2), local = digits.slice(2);
+    if (digits.length <= 6) return `(${area}) ${local}`;
+    if (digits.length <= 10) return `(${area}) ${local.slice(0, 4)}-${local.slice(4)}`;
+    return `(${area}) ${local.slice(0, 5)}-${local.slice(5)}`;
+  }
+  function formatPhoneInput(input) {
+    const original = input.value,
+      caret = input.selectionStart ?? original.length,
+      digitsBeforeCaret = original.slice(0, caret).replace(/\D/g, "").length,
+      formatted = formatBrazilianPhone(original);
+    input.value = formatted;
+    let nextCaret = 0, digitCount = 0;
+    while (nextCaret < formatted.length && digitCount < digitsBeforeCaret) {
+      if (/\d/.test(formatted[nextCaret])) digitCount++;
+      nextCaret++;
+    }
+    if (!digitsBeforeCaret && formatted.startsWith("(")) nextCaret = 1;
+    input.setSelectionRange(nextCaret, nextCaret);
+  }
   function readSettings() {
     try {
       return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+  function readLegacySettings() {
+    try {
+      return JSON.parse(localStorage.getItem(LEGACY_SETTINGS_KEY) || "{}");
     } catch {
       return {};
     }
@@ -190,15 +227,13 @@
         state.entries,
       );
       alignInitialMonth();
-    } else if (state.settings.binId && state.settings.key) {
+    }
+    if (state.settings.firebaseConfig) {
       try {
-        const remote = await binRequest("GET");
-        applyData(remote.record || remote);
-        alignInitialMonth();
-        persistLocal();
-        toast("Dados recuperados do JSONBin.");
+        await restoreFirebaseSession();
       } catch {
-        toast("Não foi possível buscar os dados do JSONBin.");
+        if (firebaseContext) firebaseContext.user = null;
+        updateSyncLabel("Firebase desconectado");
       }
     }
     if (generateRecurringEntries()) {
@@ -345,11 +380,9 @@
   }
   async function saveRecurringEntries() {
     persistLocal();
-    if (state.settings.binId && state.settings.key) {
+    if (firebaseContext?.user) {
       try {
-        await binRequest("PUT", {
-          ...dataRecord(),
-        });
+        await syncFirebaseRecord(dataRecord());
       } catch {
         updateSyncLabel("Salvo neste dispositivo");
       }
@@ -400,25 +433,22 @@
   async function saveData(message = "Movimentação salva.") {
     persistLocal();
     render();
-    if (state.settings.binId && state.settings.key) {
+    if (firebaseContext?.user) {
       updateSyncLabel("Sincronizando…");
       try {
-        await binRequest("PUT", {
-          ...dataRecord(),
-        });
-        updateSyncLabel("Sincronizado com JSONBin");
+        await syncFirebaseRecord(dataRecord());
+        updateSyncLabel("Sincronizado com Firebase");
         toast(message);
       } catch (error) {
         updateSyncLabel("Salvo neste dispositivo");
-        toast(`${message} JSONBin indisponível; os dados locais estão salvos.`);
+        toast(`${message} Firebase indisponível; os dados locais estão salvos.`);
       }
     } else {
       updateSyncLabel();
       toast(message);
     }
   }
-  async function binRequest(method, body) {
-    const { binId, key } = state.settings;
+  async function binRequest(method, body, { binId, key } = readLegacySettings()) {
     if (!binId || !key) throw Error("Configure o JSONBin nas configurações.");
     const url = `https://api.jsonbin.io/v3/b/${encodeURIComponent(binId)}${method === "GET" ? "/latest" : ""}`;
     const response = await fetch(url, {
@@ -437,8 +467,10 @@
   function updateSyncLabel(text) {
     $("#sync-label").textContent =
       text ||
-      (state.settings.binId
-        ? "Sincronizado com JSONBin"
+      (firebaseContext?.user
+        ? "Sincronizado com Firebase"
+        : state.settings.firebaseConfig
+          ? "Firebase desconectado"
         : "Salvos neste dispositivo");
   }
   function monthLabel(ym) {
@@ -985,7 +1017,7 @@
     $("#patient-form").reset();
     $("#patient-id").value = patient?.id || "";
     $("#patient-name").value = patient?.name || "";
-    $("#patient-phone").value = patient?.phone || "";
+    $("#patient-phone").value = formatBrazilianPhone(patient?.phone || "");
     $("#patient-frequency").value = patient?.frequency || "weekly";
     $("#patient-payment-frequency").value = patient?.paymentFrequency || "monthly";
     $("#patient-start").value = patient?.startDate || `${state.activeMonth}-01`;
@@ -1037,6 +1069,7 @@
   }
   function bind() {
     bindSectionNavigation();
+    $("#patient-phone").addEventListener("input", (event) => formatPhoneInput(event.currentTarget));
     $("#agenda-prev").addEventListener("click", () => {
       const current = state.agendaWeek || new Date();
       state.agendaWeek = new Date(current.getFullYear(), current.getMonth(), current.getDate() - 7, 12);
@@ -1360,23 +1393,21 @@
       renderTransactions();
     });
     $("#open-settings").addEventListener("click", () => {
-      if (state.settings.binId) $("#bin-id").value = state.settings.binId;
-      if (state.settings.key) $("#bin-key").value = state.settings.key;
+      $("#firebase-config").value = state.settings.firebaseConfig
+        ? JSON.stringify(state.settings.firebaseConfig, null, 2)
+        : "";
+      $("#firebase-password").value = "";
+      $("#firebase-email").value = firebaseContext?.user?.email || "";
       $("#settings-status").textContent = "";
       openModal("settings-modal");
     });
     $("#open-settings-mobile").addEventListener("click", () =>
       $("#open-settings").click(),
     );
-    $("#save-settings").addEventListener("click", connectBin);
-    $("#refresh-data").addEventListener("click", refreshFromBin);
-    $("#disconnect-bin").addEventListener("click", () => {
-      state.settings = {};
-      localStorage.removeItem(SETTINGS_KEY);
-      closeModal("settings-modal");
-      updateSyncLabel();
-      toast("Sincronização JSONBin desativada.");
-    });
+    $("#save-settings").addEventListener("click", () => connectFirebase(false));
+    $("#create-firebase-account").addEventListener("click", () => connectFirebase(true));
+    $("#refresh-data").addEventListener("click", refreshFromFirebase);
+    $("#disconnect-firebase").addEventListener("click", disconnectFirebase);
     document
       .querySelectorAll("[data-close]")
       .forEach((button) =>
@@ -1512,110 +1543,261 @@
     state.activeMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     render();
   }
-  async function connectBin() {
-    const binId = $("#bin-id").value.trim(),
-      key = $("#bin-key").value.trim(),
-      status = $("#settings-status");
-    if (!binId || !key) {
-      status.textContent = "Informe o ID do bin e a chave de acesso.";
-      status.className = "settings-status error";
+  function stableStringify(value) {
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+    if (value && typeof value === "object")
+      return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+    return JSON.stringify(value);
+  }
+  function cloneData(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+  function parseFirebaseConfig(raw) {
+    const text = String(raw || "").trim(),
+      scriptConfig = text.match(/(?:const|let|var)\s+firebaseConfig\s*=\s*(\{[\s\S]*?\})\s*;?/i),
+      objectText = scriptConfig ? scriptConfig[1] : text,
+      config = (() => {
+        try {
+          return JSON.parse(objectText);
+        } catch {
+          const body = objectText.slice(objectText.indexOf("{") + 1, objectText.lastIndexOf("}")),
+            properties = [...body.matchAll(/(?:^|,)\s*([A-Za-z_$][\w$]*)\s*:\s*("(?:\\.|[^"\\])*"|true|false|null|-?\d+(?:\.\d+)?)/g)];
+          if (!properties.length) throw Error("Cole o objeto firebaseConfig completo copiado do Firebase.");
+          return Object.fromEntries(properties.map(([, key, value]) => [key, JSON.parse(value)]));
+        }
+      })();
+    if (!config.apiKey || !config.projectId || !config.appId || !config.authDomain)
+      throw Error("A configuração precisa conter apiKey, authDomain, projectId e appId.");
+    return config;
+  }
+  async function loadFirebaseSdk() {
+    if (!firebaseSdkPromise) {
+      const base = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
+      firebaseSdkPromise = Promise.all([
+        import(`${base}/firebase-app.js`),
+        import(`${base}/firebase-auth.js`),
+        import(`${base}/firebase-firestore.js`),
+      ]).then(([app, auth, firestore]) => ({ ...app, ...auth, ...firestore })).catch((error) => {
+        firebaseSdkPromise = null;
+        throw error;
+      });
+    }
+    return firebaseSdkPromise;
+  }
+  async function createFirebaseContext(config) {
+    const sdk = await loadFirebaseSdk(),
+      existingContext = firebaseContext && stableStringify(firebaseContext.app.options) === stableStringify(config);
+    if (existingContext) return firebaseContext;
+    const previousApp = sdk.getApps().find((item) => item.name === "controle-leidiane");
+    if (previousApp) await sdk.deleteApp(previousApp);
+    const app = sdk.initializeApp(config, "controle-leidiane"),
+      auth = sdk.getAuth(app),
+      db = sdk.getFirestore(app);
+    firebaseContext = { ...sdk, app, auth, db, config, user: null };
+    return firebaseContext;
+  }
+  function waitForFirebaseUser(context) {
+    return new Promise((resolve, reject) => {
+      let unsubscribe = () => {};
+      unsubscribe = context.onAuthStateChanged(context.auth, (user) => {
+        unsubscribe();
+        resolve(user);
+      }, (error) => {
+        unsubscribe();
+        reject(error);
+      });
+    });
+  }
+  function firebaseCollection(context, name) {
+    return context.collection(context.db, "users", context.user.uid, name);
+  }
+  function firebaseMetaDocument(context) {
+    return context.doc(context.db, "users", context.user.uid, "appData", "main");
+  }
+  async function readFirebaseRecord(context = firebaseContext) {
+    const [entries, patients, clinicSessions, metadata] = await Promise.all([
+      context.getDocs(firebaseCollection(context, "entries")),
+      context.getDocs(firebaseCollection(context, "patients")),
+      context.getDocs(firebaseCollection(context, "clinicSessions")),
+      context.getDoc(firebaseMetaDocument(context)),
+    ]);
+    const meta = metadata.exists() ? metadata.data() : {},
+      data = {
+        entries: entries.docs.map((item) => item.data()),
+        patients: patients.docs.map((item) => item.data()),
+        clinicSessions: clinicSessions.docs.map((item) => item.data()),
+        potPercentages: { accounts: 50, wishes: 30, future: 20, ...(meta.potPercentages || {}) },
+        categories: mergeCategories(meta.categories || []),
+        importedThrough: meta.importedThrough || {},
+        updatedAt: meta.updatedAt || "",
+      },
+      exists = metadata.exists() || entries.size > 0 || patients.size > 0 || clinicSessions.size > 0;
+    firebaseShadow = exists ? cloneData(data) : null;
+    return { data, exists };
+  }
+  async function syncFirebaseRecord(record = dataRecord()) {
+    if (!firebaseContext?.user) throw Error("Entre na conta Firebase para sincronizar.");
+    const context = firebaseContext,
+      shadow = firebaseShadow || { entries: [], patients: [], clinicSessions: [] },
+      operations = [];
+    for (const name of ["entries", "patients", "clinicSessions"]) {
+      const oldItems = new Map((shadow[name] || []).map((item) => [String(item.id), item])),
+        newItems = new Map((record[name] || []).map((item) => [String(item.id), item]));
+      for (const [id, item] of newItems) {
+        if (!id || id === "undefined") throw Error(`Um registro em ${name} não tem ID.`);
+        if (stableStringify(oldItems.get(id)) === stableStringify(item)) continue;
+        operations.push({ type: "set", ref: context.doc(context.db, "users", context.user.uid, name, id), data: item });
+      }
+      for (const id of oldItems.keys()) {
+        if (!newItems.has(id)) operations.push({ type: "delete", ref: context.doc(context.db, "users", context.user.uid, name, id) });
+      }
+    }
+    const metadata = {
+      potPercentages: record.potPercentages,
+      categories: record.categories,
+      importedThrough: record.importedThrough,
+      updatedAt: record.updatedAt,
+    };
+    if (stableStringify(shadow.metadata || {}) !== stableStringify(metadata))
+      operations.push({ type: "set", ref: firebaseMetaDocument(context), data: metadata });
+    for (let start = 0; start < operations.length; start += 400) {
+      const batch = context.writeBatch(context.db);
+      operations.slice(start, start + 400).forEach((operation) => {
+        if (operation.type === "delete") batch.delete(operation.ref);
+        else batch.set(operation.ref, operation.data);
+      });
+      await batch.commit();
+    }
+    firebaseShadow = cloneData(record);
+    firebaseShadow.metadata = metadata;
+  }
+  async function legacyJsonBinRecord() {
+    const legacy = readLegacySettings();
+    if (!legacy.binId || !legacy.key) return null;
+    const response = await binRequest("GET", undefined, legacy),
+      data = response.record || response;
+    return Array.isArray(data.entries) ? data : null;
+  }
+  async function restoreFirebaseSession() {
+    const context = await createFirebaseContext(state.settings.firebaseConfig),
+      user = await waitForFirebaseUser(context);
+    if (!user) return;
+    context.user = user;
+    const remote = await readFirebaseRecord(context);
+    if (remote.exists) {
+      applyData(remote.data);
+      alignInitialMonth();
+      updateSyncLabel("Sincronizado com Firebase");
       return;
     }
-    status.textContent = "Conectando…";
+    let seed = null;
+    try { seed = await legacyJsonBinRecord(); } catch {}
+    seed ||= readLocal();
+    if (seed) {
+      applyData(seed);
+      alignInitialMonth();
+    }
+    await syncFirebaseRecord(dataRecord());
+    persistLocal();
+    updateSyncLabel("Sincronizado com Firebase");
+  }
+  async function connectFirebase(createAccount) {
+    const status = $("#settings-status"),
+      email = $("#firebase-email").value.trim(),
+      password = $("#firebase-password").value,
+      previousSettings = state.settings;
     status.className = "settings-status";
-    const previous = state.settings;
-    state.settings = { binId, key };
     try {
-      let remote;
-      try {
-        remote = await binRequest("GET");
-      } catch (error) {
-        if (/404/.test(error.message)) {
-          await binRequest("PUT", dataRecord());
-          remote = null;
-        } else throw error;
+      const config = parseFirebaseConfig($("#firebase-config").value);
+      if (!email || !password) throw Error("Informe o e-mail e a senha da conta Firebase.");
+      status.textContent = createAccount ? "Criando conta e conectando…" : "Conectando ao Firebase…";
+      const context = await createFirebaseContext(config),
+        credential = createAccount
+          ? await context.createUserWithEmailAndPassword(context.auth, email, password)
+          : await context.signInWithEmailAndPassword(context.auth, email, password);
+      context.user = credential.user;
+      const remote = await readFirebaseRecord(context);
+      if (remote.exists) {
+        applyData(remote.data);
+      } else {
+        let seed = null;
+        status.textContent = "Importando seus dados e preparando a sincronização…";
+        try { seed = await legacyJsonBinRecord(); } catch {}
+        seed ||= readLocal();
+        if (seed) applyData(seed);
+        await syncFirebaseRecord(dataRecord());
       }
-      if (remote) {
-        const remoteData = remote.record || remote;
-        if (!readLocal() && Array.isArray(remoteData.entries))
-          applyData(remoteData);
-        else
-          await binRequest("PUT", dataRecord());
-      }
+      state.settings = { firebaseConfig: config };
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+      alignInitialMonth();
       persistLocal();
-      updateSyncLabel("Sincronizado com JSONBin");
       render();
-      status.textContent =
-        "Conexão ativa. Seus dados serão salvos nos dois lugares.";
+      updateSyncLabel("Sincronizado com Firebase");
+      status.textContent = remote.exists
+        ? `Conectado como ${credential.user.email}. Os dados foram carregados do Firebase.`
+        : `Conectado como ${credential.user.email}. Os dados deste dispositivo foram sincronizados.`;
       status.className = "settings-status success";
-      setTimeout(() => closeModal("settings-modal"), 900);
+      $("#firebase-password").value = "";
+      setTimeout(() => closeModal("settings-modal"), 1400);
     } catch (error) {
-      state.settings = previous;
-      status.textContent =
-        "Não foi possível conectar. Confira o Bin ID e a X-Master-Key.";
+      if (firebaseContext) firebaseContext.user = null;
+      state.settings = previousSettings;
+      if (previousSettings.firebaseConfig) localStorage.setItem(SETTINGS_KEY, JSON.stringify(previousSettings));
+      else localStorage.removeItem(SETTINGS_KEY);
+      const message = error.code === "auth/operation-not-allowed"
+        ? "Ative o provedor E-mail/senha em Authentication no Firebase Console."
+        : error.code === "permission-denied"
+          ? "O Firestore recusou o acesso. Configure as regras de segurança do projeto."
+          : error.code === "auth/invalid-credential" || error.code === "auth/invalid-login-credentials"
+            ? "E-mail ou senha inválidos. Confira os dados ou crie a conta."
+            : error.message || "Não foi possível conectar ao Firebase.";
+      status.textContent = message;
       status.className = "settings-status error";
     }
   }
-  async function refreshFromBin() {
-    const button = $("#refresh-data"),
-      status = $("#settings-status");
-    if (!state.settings.binId || !state.settings.key) {
-      status.textContent = "Conecte o JSONBin antes de atualizar os dados.";
+  async function refreshFromFirebase() {
+    const button = $("#refresh-data"), status = $("#settings-status");
+    if (!firebaseContext?.user) {
+      status.textContent = "Entre na conta Firebase antes de atualizar os dados.";
       status.className = "settings-status error";
       return;
     }
     button.disabled = true;
     button.textContent = "Atualizando…";
-    status.textContent = "Buscando a versão mais recente do JSONBin…";
+    status.textContent = "Buscando os dados mais recentes do Firebase…";
     status.className = "settings-status";
-    // Remove só os dados locais. As credenciais do JSONBin ficam intactas.
-    localStorage.removeItem(STORAGE_KEY);
-    state.entries = [];
-    state.patients = [];
-    state.clinicSessions = [];
-    state.potPercentages = { accounts: 50, wishes: 30, future: 20 };
-    state.categories = [...DEFAULT_CATEGORIES];
-    state.importedThrough = {};
     try {
-      const response = await binRequest("GET"),
-        data = response.record || response;
-      if (!Array.isArray(data.entries))
-        throw Error("O JSONBin não contém uma lista de lançamentos válida.");
-      state.entries = data.entries;
-      state.patients = Array.isArray(data.patients) ? data.patients : [];
-      state.clinicSessions = Array.isArray(data.clinicSessions)
-        ? data.clinicSessions
-        : [];
-      state.potPercentages = {
-        accounts: 50,
-        wishes: 30,
-        future: 20,
-        ...(data.potPercentages || {}),
-      };
-      state.categories = mergeCategories(data.categories || []);
-      state.importedThrough = mergeStatementCheckpoints(
-        data.importedThrough,
-        state.entries,
-      );
+      const remote = await readFirebaseRecord();
+      if (!remote.exists) throw Error("Não há dados sincronizados nesta conta Firebase.");
+      applyData(remote.data);
       alignInitialMonth();
-      if (generateRecurringEntries()) await saveRecurringEntries();
-      else persistLocal();
+      persistLocal();
       render();
-      updateSyncLabel("Sincronizado com JSONBin");
-      status.textContent = "Dados atualizados do JSONBin neste dispositivo.";
+      updateSyncLabel("Sincronizado com Firebase");
+      status.textContent = "Dados atualizados do Firebase neste dispositivo.";
       status.className = "settings-status success";
-      toast("Dados atualizados do JSONBin.");
-    } catch {
-      render();
-      updateSyncLabel("Falha ao atualizar");
-      status.textContent =
-        "Não foi possível atualizar. Os dados locais foram limpos; confira sua conexão e tente novamente.";
+      toast("Dados atualizados do Firebase.");
+    } catch (error) {
+      status.textContent = error.message || "Não foi possível atualizar do Firebase.";
       status.className = "settings-status error";
     } finally {
       button.disabled = false;
-      button.textContent = "↻ Atualizar dados";
+      button.textContent = "↻ Atualizar do Firebase";
     }
+  }
+  async function disconnectFirebase() {
+    try {
+      if (firebaseContext) await firebaseContext.signOut(firebaseContext.auth);
+    } catch {}
+    firebaseContext = null;
+    firebaseShadow = null;
+    state.settings = {};
+    localStorage.removeItem(SETTINGS_KEY);
+    $("#firebase-config").value = "";
+    $("#firebase-password").value = "";
+    closeModal("settings-modal");
+    updateSyncLabel();
+    toast("Firebase desconectado. Seus dados locais foram mantidos.");
   }
   function parseCSV(text) {
     let rows = [],
