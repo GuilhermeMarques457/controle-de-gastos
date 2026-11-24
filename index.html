@@ -580,6 +580,19 @@
       </section>
     </div>
 
+    <div class="modal-backdrop" id="reschedule-session-modal" aria-hidden="true">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="reschedule-session-title">
+        <div class="modal-heading"><div><div class="eyebrow">AGENDA</div><h2 id="reschedule-session-title">Remarcar sessão</h2></div><button class="close-button" data-close="reschedule-session-modal" aria-label="Fechar">×</button></div>
+        <p class="settings-copy" id="reschedule-session-copy"></p>
+        <form id="reschedule-session-form">
+          <div class="field-row"><label class="field-label">Nova data<input id="reschedule-date" type="date" required /></label><label class="field-label">Novo horário<input id="reschedule-time" type="time" required /></label></div>
+          <p class="field-hint reschedule-time-error" id="reschedule-time-error" hidden>Este paciente já tem uma sessão nesse dia e horário. Escolha outro horário.</p>
+          <label class="field-label">Observação <span class="optional">opcional</span><input id="reschedule-note" maxlength="140" placeholder="Ex.: solicitado pela paciente" /></label>
+          <div class="modal-actions"><button class="secondary-button" type="button" data-close="reschedule-session-modal">Cancelar</button><button class="primary-button" type="submit">Salvar nova data</button></div>
+        </form>
+      </section>
+    </div>
+
     <div class="modal-backdrop" id="session-conflict-modal" aria-hidden="true">
       <section class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="session-conflict-title">
         <div class="modal-heading"><div><div class="eyebrow">CONFLITO DE HORÁRIO</div><h2 id="session-conflict-title">Já existe uma sessão nesse horário</h2></div><button class="close-button" data-close="session-conflict-modal" aria-label="Fechar">×</button></div>

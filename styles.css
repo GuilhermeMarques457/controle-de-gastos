@@ -4484,3 +4484,11 @@ td {
   .auth-card { padding: 25px 20px; }
   .auth-layout .auth-card { padding: 25px 20px; }
 }
+.session-line.readonly :disabled { opacity: 1; cursor: default; }
+.session-line.readonly input:disabled,
+.session-line.readonly select:disabled {
+  color: var(--ink);
+  background-color: #fff;
+  -webkit-text-fill-color: currentColor;
+}
+.reschedule-time-error { color: var(--coral); }
