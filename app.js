@@ -446,7 +446,9 @@
   function monthEntries(ym) {
     const entries = state.entries.filter((e) => e.date?.slice(0, 7) === ym);
     const sessionIncome = state.clinicSessions
-      .filter((session) => session.month === ym && session.paid && !session.deleted && session.attendance !== "rescheduled")
+      .filter((session) => session.month === ym && session.paid && !session.deleted && !session.placeholder && (
+        session.attendance !== "rescheduled" || state.clinicSessions.some((item) => !item.deleted && item.placeholder && item.rescheduledFromId === session.id)
+      ))
       .map((session) => ({ id: `clinic-${session.id}`, type: "income", amount: Number(session.amount || 0), date: session.date, category: "Atendimentos clínicos", description: "Sessão de paciente", paid: true, pot: "accounts" }));
     return [...entries, ...sessionIncome];
   }
@@ -479,7 +481,7 @@
     const months = [...new Set(keys.map((key) => key.slice(0, 7)))];
     months.forEach((month) => ensureClinicSessions(month));
     const sessionsByDate = new Map(keys.map((key) => [key, []]));
-    state.clinicSessions.filter((session) => !session.deleted && sessionsByDate.has(session.date)).forEach((session) => {
+    state.clinicSessions.filter((session) => !session.deleted && !session.placeholder && session.date && sessionsByDate.has(session.date)).forEach((session) => {
       const patient = state.patients.find((item) => item.id === session.patientId);
       if (!patient) return;
       const time = (session.time || patient.time || "09:00").slice(0, 5);
@@ -526,7 +528,7 @@
     $("#agenda-mobile-day").innerHTML = `<h3>${agendaDateLabel(selectedDate, { weekday: "long", day: "numeric", month: "long" })}</h3>${selectedItems.length ? `<div class="calendar-day-timeline">${selectedItems.map((item) => `<div class="calendar-mobile-event"><time>${item.time}</time>${eventMarkup(item)}</div>`).join("")}</div>` : `<p class="calendar-empty-day">Nenhuma sessão agendada para este dia.</p>`}`;
   }
   function sessionIsOverdue(session, patient, today = new Date().toLocaleDateString("sv-SE")) {
-    if (session.paid || session.deleted || session.attendance === "missed" || session.attendance === "rescheduled" || !session.date) return false;
+    if (session.paid || session.deleted || session.placeholder || session.attendance === "missed" || session.attendance === "rescheduled" || !session.date) return false;
     const due = new Date(`${session.date}T12:00:00`);
     if (patient.paymentFrequency === "weekly") due.setDate(due.getDate() + 7);
     else if (patient.paymentFrequency === "biweekly") due.setDate(due.getDate() + 15);
@@ -545,7 +547,7 @@
       replacement = linked || null;
     state.pendingRescheduleSessionId = session.id;
     $("#reschedule-session-title").textContent = replacement ? "Corrigir remarcação" : "Remarcar sessão";
-    $("#reschedule-session-copy").textContent = `${patient?.name || "Paciente"} · sessão original em ${formatStatementDate(session.date)} às ${(session.time || patient?.time || "09:00").slice(0, 5)}. A sessão original ficará no histórico.`;
+    $("#reschedule-session-copy").textContent = `${patient?.name || "Paciente"} · sessão original em ${formatStatementDate(session.date)} às ${(session.time || patient?.time || "09:00").slice(0, 5)}. Se ainda não souber o novo horário, você poderá defini-lo depois.`;
     dateInput.value = draft.date || replacement?.date || "";
     $("#reschedule-time").value = draft.time || replacement?.time || session.time || patient?.time || "09:00";
     $("#reschedule-note").value = draft.note ?? replacement?.rescheduleNote ?? session.rescheduleNote ?? "";
@@ -559,21 +561,26 @@
     source.attendance = "rescheduled";
     source.rescheduledAt ||= new Date().toISOString();
     source.rescheduleNote = change.note || "";
+    const deferred = Boolean(change.defer),
+      sessionDate = deferred ? "" : change.date,
+      sessionMonth = deferred ? (source.month || source.date.slice(0, 7)) : change.date.slice(0, 7);
     if (!replacement) {
       replacement = {
-        id: uid(), patientId: source.patientId, date: change.date, scheduledDate: change.date,
-        month: change.date.slice(0, 7), time: change.time, amount: Number(source.amount || 0),
-        kind: source.kind || "regular", attendance: "pending", paid: Boolean(source.paid),
+        id: uid(), patientId: source.patientId, date: sessionDate, scheduledDate: sessionDate,
+        month: sessionMonth, time: deferred ? "" : change.time, amount: Number(source.amount || 0),
+        kind: source.kind || "regular", attendance: "pending", paid: Boolean(source.paid), placeholder: deferred,
         rescheduledFromId: source.id, rescheduleNote: change.note || "",
       };
       state.clinicSessions.push(replacement);
       source.rescheduledToId = replacement.id;
     } else {
       replacement.deleted = false;
-      replacement.date = change.date;
-      replacement.scheduledDate ||= change.date;
-      replacement.month = change.date.slice(0, 7);
-      replacement.time = change.time;
+      replacement.placeholder = deferred;
+      replacement.date = sessionDate;
+      replacement.scheduledDate = sessionDate;
+      replacement.month = sessionMonth;
+      replacement.time = deferred ? "" : change.time;
+      if (deferred) replacement.paid = Boolean(source.paid);
       replacement.rescheduleNote = change.note || "";
       source.rescheduledToId = replacement.id;
     }
@@ -638,6 +645,38 @@
         changed = true;
       }
     }
+    for (const source of state.clinicSessions.filter((session) => !session.deleted && session.attendance === "rescheduled")) {
+      const replacement = state.clinicSessions.find((session) => !session.deleted && session.rescheduledFromId === source.id);
+      if (replacement) {
+        if (!replacement.date || !replacement.time) {
+          if (!replacement.placeholder) changed = true;
+          replacement.placeholder = true;
+          replacement.date = "";
+          replacement.scheduledDate = "";
+          replacement.time = "";
+          replacement.paid = Boolean(source.paid);
+        }
+        if (replacement.placeholder && replacement.paid !== Boolean(source.paid)) {
+          replacement.paid = Boolean(source.paid);
+          changed = true;
+        }
+        if (replacement.placeholder && !Number(replacement.amount || 0) && Number(source.amount || 0)) {
+          replacement.amount = Number(source.amount || 0);
+          changed = true;
+        }
+        source.rescheduledToId = replacement.id;
+        continue;
+      }
+      const month = source.month || source.date?.slice(0, 7) || ym,
+        placeholder = {
+          id: uid(), patientId: source.patientId, date: "", scheduledDate: "", month, time: "",
+          amount: Number(source.amount || 0), kind: source.kind || "regular", attendance: "pending",
+        paid: Boolean(source.paid), placeholder: true, rescheduledFromId: source.id,
+        };
+      state.clinicSessions.push(placeholder);
+      source.rescheduledToId = placeholder.id;
+      changed = true;
+    }
     if (changed) persistLocal();
   }
   function renderClinic() {
@@ -688,14 +727,20 @@
           matchesSession;
       }),
       visiblePatientIds = new Set(visiblePatients.map((patient) => patient.id)),
-      visibleSessions = (overdueOnly ? overdueSessions : sessions).filter((session) => visiblePatientIds.has(session.patientId) && session.attendance !== "rescheduled"),
-      paidTotal = visibleSessions.filter((session) => session.paid).reduce((sum, session) => sum + Number(session.amount || 0), 0),
+      visibleSessions = (overdueOnly ? overdueSessions : sessions).filter((session) => visiblePatientIds.has(session.patientId) && !session.placeholder && session.attendance !== "rescheduled"),
+      paidTotal = (overdueOnly ? overdueSessions : sessions).filter((session) => visiblePatientIds.has(session.patientId) && session.paid && session.attendance !== "rescheduled").reduce((sum, session) => sum + Number(session.amount || 0), 0),
       overdueTotal = visibleSessions.reduce((sum, session) => sum + Number(session.amount || 0), 0),
       seenCount = visibleSessions.filter((session) => session.attendance === "attended").length;
     $("#patients-month").textContent = monthLabel(state.activeMonth).toLocaleLowerCase("pt-BR");
     $("#patient-list").innerHTML = visiblePatients.map((patient) => {
-      const visits = (overdueOnly ? overdueSessions : sessions).filter((session) => session.patientId === patient.id).sort((a, b) => a.date.localeCompare(b.date)),
-        activeVisits = visits.filter((session) => session.attendance !== "rescheduled"),
+      const visits = (overdueOnly ? overdueSessions : sessions).filter((session) => session.patientId === patient.id).sort((a, b) => {
+          return a.date.localeCompare(b.date);
+        }),
+        activeVisits = visits.filter((session) => !session.placeholder && session.attendance !== "rescheduled"),
+        displayVisits = visits.filter((session) => !session.placeholder).flatMap((session) => [
+          session,
+          ...visits.filter((item) => item.placeholder && item.rescheduledFromId === session.id),
+        ]),
         total = activeVisits.reduce((sum, session) => sum + Number(session.amount || 0), 0),
         scheduleWeekday = Number.isInteger(Number(patient.weekday)) && patient.weekday !== ""
           ? Number(patient.weekday)
@@ -706,12 +751,24 @@
               : null,
         scheduleTime = patient.time || visits.find((session) => session.time)?.time || "",
         scheduleLabel = `${scheduleWeekday === null ? "Dia a definir" : WEEKDAYS[scheduleWeekday]}${scheduleTime ? ` · ${scheduleTime}` : ""}`,
-        visitControls = visits.map((session) => {
-          const overdue = sessionIsOverdue(session, patient), extra = session.kind === "extra" || session.kind === "emergency", readonly = session.attendance === "rescheduled";
-          return `<div class="session-line${overdue ? " overdue" : ""}${readonly ? " readonly" : ""}"><input class="session-datetime" type="datetime-local" value="${session.date}T${(session.time || patient.time || "09:00").slice(0, 5)}" data-session-datetime="${session.id}" aria-label="Data e horário da sessão de ${escapeHtml(patient.name)}" ${readonly ? "disabled" : ""} />${overdue ? '<span class="session-kind-placeholder" aria-hidden="true"></span><span class="session-kind overdue-tag">Vencida</span>' : extra ? '<span class="session-kind emergency-tag">Extra</span>' : '<span class="session-kind-placeholder" aria-hidden="true"></span>'}<select aria-label="Presença de ${escapeHtml(patient.name)}" data-attendance="${session.id}" ${readonly ? "disabled" : ""}><option value="pending" ${session.attendance === "pending" ? "selected" : ""}>A confirmar</option><option value="attended" ${session.attendance === "attended" ? "selected" : ""}>Compareceu</option><option value="missed" ${session.attendance === "missed" ? "selected" : ""}>Faltou</option><option value="rescheduled" ${session.attendance === "rescheduled" ? "selected" : ""}>Remarcou</option></select><label class="session-paid"><input type="checkbox" data-paid="${session.id}" ${session.paid ? "checked" : ""} aria-label="Sessão paga" ${readonly ? "disabled" : ""} /> Pago</label><input class="session-amount" type="number" min="0" step="0.01" value="${Number(session.amount || 0)}" data-session-amount="${session.id}" aria-label="Valor da sessão" ${readonly ? "disabled" : ""} /><button class="session-delete" type="button" data-session-delete="${session.id}" aria-label="Excluir sessão de ${escapeHtml(patient.name)}" title="Excluir sessão" ${readonly ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3" /></svg></button></div>`;
+        visitControls = displayVisits.map((session) => {
+          const overdue = sessionIsOverdue(session, patient),
+            extra = session.kind === "extra" || session.kind === "emergency",
+            readonly = session.attendance === "rescheduled",
+            placeholder = Boolean(session.placeholder),
+            replacement = readonly ? state.clinicSessions.find((item) => !item.deleted && item.rescheduledFromId === session.id) : null,
+            source = session.rescheduledFromId ? state.clinicSessions.find((item) => item.id === session.rescheduledFromId) : null,
+            linkLabel = replacement
+              ? `Remarcada para${replacement.placeholder ? " · data e horário a definir" : ` · ${formatStatementDate(replacement.date)} às ${(replacement.time || patient.time || "09:00").slice(0, 5)}`}`
+              : source
+                ? `${placeholder ? "Nova sessão · remarcação de" : "Continuação da sessão de"} ${formatStatementDate(source.date)} às ${(source.time || patient.time || "09:00").slice(0, 5)}`
+                : "",
+            linked = Boolean(linkLabel),
+            disabled = readonly || placeholder;
+          return `<div class="session-line${overdue ? " overdue" : ""}${readonly ? " readonly reschedule-source" : ""}${source ? " reschedule-destination" : ""}${linked ? " reschedule-linked" : ""}${placeholder ? " reschedule-placeholder" : ""}">${linkLabel ? `<small class="session-link-label">↳ ${escapeHtml(linkLabel)}</small>` : ""}<input class="session-datetime" type="datetime-local" value="${placeholder ? "" : `${session.date}T${(session.time || patient.time || "09:00").slice(0, 5)}`}" data-session-datetime="${session.id}" aria-label="Data e horário da sessão de ${escapeHtml(patient.name)}" ${readonly ? "disabled" : ""} />${overdue ? '<span class="session-kind-placeholder" aria-hidden="true"></span><span class="session-kind overdue-tag">Vencida</span>' : extra ? '<span class="session-kind emergency-tag">Extra</span>' : '<span class="session-kind-placeholder" aria-hidden="true"></span>'}<select aria-label="Presença de ${escapeHtml(patient.name)}" data-attendance="${session.id}" ${disabled ? "disabled" : ""}><option value="pending" ${session.attendance === "pending" ? "selected" : ""}>A confirmar</option><option value="attended" ${session.attendance === "attended" ? "selected" : ""}>Compareceu</option><option value="missed" ${session.attendance === "missed" ? "selected" : ""}>Faltou</option><option value="rescheduled" ${session.attendance === "rescheduled" ? "selected" : ""}>Remarcou</option></select><label class="session-paid"><input type="checkbox" data-paid="${session.id}" ${session.paid ? "checked" : ""} aria-label="Sessão paga" ${disabled ? "disabled" : ""} /> Pago</label><input class="session-amount" type="number" min="0" step="0.01" value="${session.amount === "" ? "" : Number(session.amount || 0)}" data-session-amount="${session.id}" aria-label="Valor da sessão" ${readonly ? "disabled" : ""} /><button class="session-delete" type="button" data-session-delete="${session.id}" aria-label="Excluir sessão de ${escapeHtml(patient.name)}" title="Excluir sessão" ${disabled ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3" /></svg></button></div>`;
         }).join("") || `<span class="metric-period">${overdueOnly ? "Sem sessões vencidas" : "Sem sessões neste mês"}</span>`,
         frequencyClass = patient.frequency || "weekly";
-      const paid = activeVisits.filter((session) => session.paid).reduce((sum, session) => sum + Number(session.amount || 0), 0),
+      const paid = visits.filter((session) => session.paid && session.attendance !== "rescheduled").reduce((sum, session) => sum + Number(session.amount || 0), 0),
         overdueAmount = activeVisits.filter((session) => sessionIsOverdue(session, patient)).reduce((sum, session) => sum + Number(session.amount || 0), 0),
         accordionOpen = !isMobileLayout && state.patientView === "table" ? " open" : "";
       return `<tr><td><div class="patient-name-cell"><strong>${escapeHtml(patient.name)}</strong><button class="patient-edit" data-patient-edit="${patient.id}" aria-label="Editar paciente">✎</button></div></td><td data-label="Telefone">${escapeHtml(patient.phone || "—")}</td><td data-label="Agenda"><span class="frequency-badge ${frequencyClass}">${FREQUENCIES[frequencyClass] || "Semanal"}</span><small class="schedule-sub">${scheduleLabel}</small><small class="schedule-sub payment-frequency">Pagamento ${FREQUENCIES[patient.paymentFrequency] || "mensal"}</small></td><td data-label="Sessões"><strong>${activeVisits.length}</strong><small class="sessions-sub">${activeVisits.filter((session) => session.attendance === "attended").length} realizadas</small></td><td data-label="Valor por sessão"><strong>${money(patient.price || 0)}</strong><small class="sessions-sub">${money(total)} ${overdueOnly ? "vencido" : "no mês"}</small></td><td class="patient-sessions-cell" data-label="Sessões e pagamentos"><details class="session-accordion"${accordionOpen}><summary><span>Ver ${visits.length === 1 ? "sessão" : `${visits.length} sessões`}</span>${overdueAmount ? `<strong>${money(overdueAmount)} vencidos</strong>` : "<small>presenças e pagamentos</small>"}<i class="session-disclosure-chevron" aria-hidden="true"></i></summary><div class="session-lines">${visitControls}</div></details></td><td data-label="Recebido"><strong>${money(paid)}</strong></td></tr>`;
@@ -1075,6 +1132,8 @@
     session.date = change.date;
     session.time = change.time;
     session.month = change.date.slice(0, 7);
+    session.scheduledDate ||= change.date;
+    session.placeholder = false;
     state.pendingSessionChange = null;
     closeModal("session-conflict-modal");
     await saveData("Horário da sessão atualizado.");
@@ -1252,6 +1311,14 @@
       const session = state.clinicSessions.find((item) => item.id === target.dataset.sessionDatetime),
         [newDate, newTime] = target.value.split("T");
       if (!session || (session.date === newDate && (session.time || "") === newTime)) return;
+      const samePatientDuplicate = session.placeholder && state.clinicSessions.some((item) =>
+        !item.deleted && !item.placeholder && item.id !== session.id && item.patientId === session.patientId && item.date === newDate && (item.time || state.patients.find((patient) => patient.id === item.patientId)?.time || "") === newTime,
+      );
+      if (samePatientDuplicate) {
+        toast("Este paciente já tem uma sessão nesse dia e horário.");
+        renderClinic();
+        return;
+      }
       const conflicts = state.clinicSessions.filter((item) => {
         if (item.deleted || item.id === session.id || item.patientId === session.patientId || item.date !== newDate) return false;
         const otherPatient = state.patients.find((patient) => patient.id === item.patientId);
@@ -1295,6 +1362,14 @@
         return;
       }
       await commitReschedule(change);
+    });
+    $("#reschedule-later").addEventListener("click", async () => {
+      const source = state.clinicSessions.find((item) => item.id === state.pendingRescheduleSessionId);
+      if (!source) return;
+      await commitReschedule({
+        kind: "reschedule", originalSessionId: source.id, defer: true,
+        note: $("#reschedule-note").value.trim(),
+      });
     });
     $("#cancel-session-conflict").addEventListener("click", () => {
       const change = state.pendingSessionChange;

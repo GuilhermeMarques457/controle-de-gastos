@@ -4499,4 +4499,36 @@ td {
 .session-line.readonly .session-paid { color: #7c8585; }
 .session-line.readonly .session-paid input:disabled { accent-color: #a2aaaa; }
 .session-line.readonly .session-delete { filter: grayscale(1); opacity: 0.55; }
+.session-line.reschedule-linked {
+  border: 1px solid color-mix(in srgb, var(--brand) 38%, #dfe3e3);
+  border-left: 4px solid var(--brand);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 12%, transparent);
+}
+.session-line.reschedule-source { background: color-mix(in srgb, var(--brand-soft) 36%, #eef0f0); }
+.session-line.reschedule-destination { background: color-mix(in srgb, var(--brand-soft) 58%, white); }
+.session-line.reschedule-placeholder { border-style: dashed; }
+.session-link-label {
+  grid-column: 1 / -1;
+  justify-self: start;
+  max-width: 100%;
+  padding: 4px 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  color: var(--brand-deep);
+  background: var(--brand-soft-strong);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-line.reschedule-placeholder .session-datetime { border-style: dashed; }
+.session-line.reschedule-placeholder .session-delete:disabled { filter: grayscale(1); opacity: 0.55; }
 .reschedule-time-error { color: var(--coral); }
+@media (max-width: 600px) {
+  .session-line .session-link-label { grid-column: 1 / -1; }
+  #reschedule-session-form .modal-actions { display: grid; grid-template-columns: 1fr; }
+  #reschedule-session-form .modal-actions button { width: 100%; }
+  #reschedule-session-form #reschedule-later { order: 2; }
+  #reschedule-session-form .modal-actions button[data-close] { order: 3; }
+  #reschedule-session-form .modal-actions button[type="submit"] { order: 1; }
+}
