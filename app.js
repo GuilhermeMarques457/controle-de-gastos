@@ -481,7 +481,7 @@
     const months = [...new Set(keys.map((key) => key.slice(0, 7)))];
     months.forEach((month) => ensureClinicSessions(month));
     const sessionsByDate = new Map(keys.map((key) => [key, []]));
-    state.clinicSessions.filter((session) => !session.deleted && !session.placeholder && session.date && sessionsByDate.has(session.date)).forEach((session) => {
+    state.clinicSessions.filter((session) => !session.deleted && !session.placeholder && session.attendance !== "rescheduled" && session.date && sessionsByDate.has(session.date)).forEach((session) => {
       const patient = state.patients.find((item) => item.id === session.patientId);
       if (!patient) return;
       const time = (session.time || patient.time || "09:00").slice(0, 5);
@@ -506,7 +506,7 @@
     const eventMarkup = (item) => {
       const { session, patient, time } = item,
         status = session.attendance === "missed" ? "Faltou" : session.attendance === "rescheduled" ? "Remarcou" : session.paid ? "Pago" : "";
-      return `<div class="calendar-event${session.attendance === "missed" ? " missed" : ""}" title="${escapeHtml(patient.name)} · ${time}${status ? ` · ${status}` : ""}"><strong>${escapeHtml(patient.name)}</strong><span>${time}${status ? ` · ${status}` : ""}</span></div>`;
+      return `<button type="button" class="calendar-event${session.attendance === "missed" ? " missed" : ""}" data-agenda-session="${escapeHtml(session.id)}" aria-haspopup="dialog" aria-label="Editar sessão de ${escapeHtml(patient.name)}, ${time}${status ? `, ${status}` : ""}"><strong>${escapeHtml(patient.name)}</strong><span>${time}${status ? ` · ${status}` : ""}</span></button>`;
     };
     const weekCells = [`<div class="calendar-day-heading calendar-time-heading"></div>`, ...dates.map((date) => {
       const key = dateKey(date);
@@ -517,7 +517,7 @@
       dates.forEach((date) => {
         const hourItems = sessionsByDate.get(dateKey(date)).filter((item) => Number(item.time.split(":")[0]) === hour);
         const content = hourItems.length > 1
-          ? `<div class="calendar-overlap-group"><span class="calendar-overlap-count">${hourItems.length} sessões</span>${hourItems.map((item) => `<div class="calendar-overlap-item"><strong>${escapeHtml(item.patient.name)}</strong><span>${item.time}${item.session.attendance === "missed" ? " · Faltou" : item.session.attendance === "rescheduled" ? " · Remarcou" : item.session.paid ? " · Pago" : ""}</span></div>`).join("")}</div>`
+          ? `<div class="calendar-overlap-group"><span class="calendar-overlap-count">${hourItems.length} sessões</span>${hourItems.map((item) => `<button type="button" class="calendar-overlap-item" data-agenda-session="${escapeHtml(item.session.id)}" aria-haspopup="dialog" aria-label="Editar sessão de ${escapeHtml(item.patient.name)}, ${item.time}"><strong>${escapeHtml(item.patient.name)}</strong><span>${item.time}${item.session.attendance === "missed" ? " · Faltou" : item.session.attendance === "rescheduled" ? " · Remarcou" : item.session.paid ? " · Pago" : ""}</span></button>`).join("")}</div>`
           : hourItems.map(eventMarkup).join("");
         weekCells.push(`<div class="calendar-hour-cell${dateKey(date) === todayKey ? " is-today" : ""}">${content}</div>`);
       });
@@ -526,6 +526,52 @@
     const selectedItems = sessionsByDate.get(state.agendaSelectedDay) || [],
       selectedDate = dates.find((date) => dateKey(date) === state.agendaSelectedDay);
     $("#agenda-mobile-day").innerHTML = `<h3>${agendaDateLabel(selectedDate, { weekday: "long", day: "numeric", month: "long" })}</h3>${selectedItems.length ? `<div class="calendar-day-timeline">${selectedItems.map((item) => `<div class="calendar-mobile-event"><time>${item.time}</time>${eventMarkup(item)}</div>`).join("")}</div>` : `<p class="calendar-empty-day">Nenhuma sessão agendada para este dia.</p>`}`;
+  }
+  function closeAgendaSessionPopover() {
+    const popover = $("#agenda-session-popover");
+    popover.hidden = true;
+    popover.removeAttribute("data-session-id");
+    state.agendaSessionAnchor = null;
+  }
+  function positionAgendaSessionPopover() {
+    const anchor = state.agendaSessionAnchor,
+      popover = $("#agenda-session-popover");
+    if (!anchor || !document.contains(anchor)) {
+      closeAgendaSessionPopover();
+      return;
+    }
+    const rect = anchor.getBoundingClientRect(), width = Math.min(340, window.innerWidth - 24);
+    if (rect.bottom < 0 || rect.top > window.innerHeight) {
+      closeAgendaSessionPopover();
+      return;
+    }
+    popover.style.width = `${width}px`;
+    const height = popover.offsetHeight,
+      left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
+      top = rect.bottom + height + 12 <= window.innerHeight ? rect.bottom + 8 : Math.max(12, rect.top - height - 8);
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
+  }
+  function openAgendaSessionPopover(sessionId, anchor) {
+    const session = state.clinicSessions.find((item) => item.id === sessionId && !item.deleted),
+      patient = state.patients.find((item) => item.id === session?.patientId),
+      popover = $("#agenda-session-popover");
+    if (!session || !patient) return;
+    $("#agenda-session-title").textContent = patient.name;
+    $("#agenda-session-date").value = session.date || "";
+    $("#agenda-session-time").value = (session.time || patient.time || "09:00").slice(0, 5);
+    $("#agenda-session-attendance").value = ["attended", "missed"].includes(session.attendance) ? session.attendance : "pending";
+    $("#agenda-session-amount").value = Number(session.amount || 0);
+    $("#agenda-session-paid").checked = Boolean(session.paid);
+    const isRescheduled = session.attendance === "rescheduled";
+    ["#agenda-session-date", "#agenda-session-time", "#agenda-session-attendance", "#agenda-session-amount", "#agenda-session-paid"].forEach((selector) => { $(selector).disabled = isRescheduled; });
+    $("#agenda-session-form button[type=submit]").disabled = isRescheduled;
+    $("#agenda-session-reschedule").textContent = isRescheduled ? "Corrigir remarcação" : "Remarcar";
+    popover.dataset.sessionId = session.id;
+    state.agendaSessionAnchor = anchor;
+    popover.hidden = false;
+    positionAgendaSessionPopover();
+    $("#agenda-session-date").focus({ preventScroll: true });
   }
   function sessionIsOverdue(session, patient, today = new Date().toLocaleDateString("sv-SE")) {
     if (session.paid || session.deleted || session.placeholder || session.attendance === "missed" || session.attendance === "rescheduled" || !session.date) return false;
@@ -729,6 +775,7 @@
       visiblePatientIds = new Set(visiblePatients.map((patient) => patient.id)),
       visibleSessions = (overdueOnly ? overdueSessions : sessions).filter((session) => visiblePatientIds.has(session.patientId) && !session.placeholder && session.attendance !== "rescheduled"),
       paidTotal = (overdueOnly ? overdueSessions : sessions).filter((session) => visiblePatientIds.has(session.patientId) && session.paid && session.attendance !== "rescheduled").reduce((sum, session) => sum + Number(session.amount || 0), 0),
+      receivableTotal = visibleSessions.filter((session) => !session.paid && session.attendance !== "missed").reduce((sum, session) => sum + Number(session.amount || 0), 0),
       overdueTotal = visibleSessions.reduce((sum, session) => sum + Number(session.amount || 0), 0),
       seenCount = visibleSessions.filter((session) => session.attendance === "attended").length;
     $("#patients-month").textContent = monthLabel(state.activeMonth).toLocaleLowerCase("pt-BR");
@@ -769,9 +816,10 @@
         }).join("") || `<span class="metric-period">${overdueOnly ? "Sem sessões vencidas" : "Sem sessões neste mês"}</span>`,
         frequencyClass = patient.frequency || "weekly";
       const paid = visits.filter((session) => session.paid && session.attendance !== "rescheduled").reduce((sum, session) => sum + Number(session.amount || 0), 0),
+        receivable = activeVisits.filter((session) => !session.paid && session.attendance !== "missed").reduce((sum, session) => sum + Number(session.amount || 0), 0),
         overdueAmount = activeVisits.filter((session) => sessionIsOverdue(session, patient)).reduce((sum, session) => sum + Number(session.amount || 0), 0),
         accordionOpen = !isMobileLayout && state.patientView === "table" ? " open" : "";
-      return `<tr><td><div class="patient-name-cell"><strong>${escapeHtml(patient.name)}</strong><button class="patient-edit" data-patient-edit="${patient.id}" aria-label="Editar paciente">✎</button></div></td><td data-label="Telefone">${escapeHtml(patient.phone || "—")}</td><td data-label="Agenda"><span class="frequency-badge ${frequencyClass}">${FREQUENCIES[frequencyClass] || "Semanal"}</span><small class="schedule-sub">${scheduleLabel}</small><small class="schedule-sub payment-frequency">Pagamento ${FREQUENCIES[patient.paymentFrequency] || "mensal"}</small></td><td data-label="Sessões"><strong>${activeVisits.length}</strong><small class="sessions-sub">${activeVisits.filter((session) => session.attendance === "attended").length} realizadas</small></td><td data-label="Valor por sessão"><strong>${money(patient.price || 0)}</strong><small class="sessions-sub">${money(total)} ${overdueOnly ? "vencido" : "no mês"}</small></td><td class="patient-sessions-cell" data-label="Sessões e pagamentos"><details class="session-accordion"${accordionOpen}><summary><span>Ver ${visits.length === 1 ? "sessão" : `${visits.length} sessões`}</span>${overdueAmount ? `<strong>${money(overdueAmount)} vencidos</strong>` : "<small>presenças e pagamentos</small>"}<i class="session-disclosure-chevron" aria-hidden="true"></i></summary><div class="session-lines">${visitControls}</div></details></td><td data-label="Recebido"><strong>${money(paid)}</strong></td></tr>`;
+      return `<tr><td><div class="patient-name-cell"><strong>${escapeHtml(patient.name)}</strong><button class="patient-edit" data-patient-edit="${patient.id}" aria-label="Editar paciente">✎</button></div></td><td data-label="Telefone">${escapeHtml(patient.phone || "—")}</td><td data-label="Agenda"><span class="frequency-badge ${frequencyClass}">${FREQUENCIES[frequencyClass] || "Semanal"}</span><small class="schedule-sub">${scheduleLabel}</small><small class="schedule-sub payment-frequency">Pagamento ${FREQUENCIES[patient.paymentFrequency] || "mensal"}</small></td><td data-label="Sessões"><strong>${activeVisits.length}</strong><small class="sessions-sub">${activeVisits.filter((session) => session.attendance === "attended").length} realizadas</small></td><td data-label="Valor por sessão"><strong>${money(patient.price || 0)}</strong><small class="sessions-sub">${money(total)} ${overdueOnly ? "vencido" : "no mês"}</small></td><td class="patient-sessions-cell" data-label="Sessões e pagamentos"><details class="session-accordion"${accordionOpen}><summary><span>Ver ${visits.length === 1 ? "sessão" : `${visits.length} sessões`}</span>${overdueAmount ? `<strong>${money(overdueAmount)} vencidos</strong>` : "<small>presenças e pagamentos</small>"}<i class="session-disclosure-chevron" aria-hidden="true"></i></summary><div class="session-lines">${visitControls}</div></details></td><td data-label="Recebido / a receber"><strong>${money(paid)}</strong><small class="sessions-sub receivable-amount">${overdueOnly ? "Vencido: " : "A receber: "}${money(receivable)}</small></td></tr>`;
     }).join("");
     const noPatients = patients.length === 0;
     $("#patients-empty").classList.toggle("show", visiblePatients.length === 0);
@@ -781,7 +829,7 @@
       : "Tente alterar ou limpar os filtros para ver pacientes.";
     $("#empty-patient-add").hidden = !noPatients;
     $("#patient-list").closest(".table-wrap").querySelector("table").style.display = visiblePatients.length ? "" : "none";
-    $("#patients-totals").innerHTML = `<span>${visiblePatients.length} de ${patients.length} ${patients.length === 1 ? "paciente" : "pacientes"}</span><span>${overdueOnly ? `${visibleSessions.length} sessões vencidas` : `${visibleSessions.length} sessões previstas · ${seenCount} realizadas`}</span><strong>${money(overdueOnly ? overdueTotal : paidTotal)} ${overdueOnly ? "em aberto" : "recebidos"}</strong>`;
+    $("#patients-totals").innerHTML = `<span>${visiblePatients.length} de ${patients.length} ${patients.length === 1 ? "paciente" : "pacientes"}</span><span>${overdueOnly ? `${visibleSessions.length} sessões vencidas` : `${visibleSessions.length} sessões previstas · ${seenCount} realizadas`}</span>${overdueOnly ? `<strong>${money(overdueTotal)} em aberto</strong>` : `<strong>${money(paidTotal)} recebidos</strong><strong class="patients-receivable-total">${money(receivableTotal)} a receber</strong>`}`;
   }
   function render() {
     ensureClinicSessions(state.activeMonth);
@@ -1134,8 +1182,10 @@
     session.month = change.date.slice(0, 7);
     session.scheduledDate ||= change.date;
     session.placeholder = false;
+    if (change.edits) Object.assign(session, change.edits);
     state.pendingSessionChange = null;
     closeModal("session-conflict-modal");
+    closeAgendaSessionPopover();
     await saveData("Horário da sessão atualizado.");
   }
   function bind() {
@@ -1161,6 +1211,62 @@
       if (!button) return;
       state.agendaSelectedDay = button.dataset.agendaDay;
       renderAgenda();
+    });
+    $("#agenda").addEventListener("click", (event) => {
+      const sessionButton = event.target.closest("[data-agenda-session]");
+      if (sessionButton) {
+        openAgendaSessionPopover(sessionButton.dataset.agendaSession, sessionButton);
+        return;
+      }
+      if (!event.target.closest("#agenda-session-popover")) closeAgendaSessionPopover();
+    });
+    document.addEventListener("pointerdown", (event) => {
+      const popover = $("#agenda-session-popover");
+      if (!popover.hidden && !popover.contains(event.target) && !event.target.closest("[data-agenda-session]")) closeAgendaSessionPopover();
+    });
+    document.addEventListener("scroll", positionAgendaSessionPopover, true);
+    window.addEventListener("resize", positionAgendaSessionPopover);
+    $("#agenda-session-close").addEventListener("click", closeAgendaSessionPopover);
+    $("#agenda-session-reschedule").addEventListener("click", () => {
+      const session = state.clinicSessions.find((item) => item.id === $("#agenda-session-popover").dataset.sessionId);
+      if (!session) return;
+      closeAgendaSessionPopover();
+      openRescheduleModal(session);
+    });
+    $("#agenda-session-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const sessionId = $("#agenda-session-popover").dataset.sessionId,
+        session = state.clinicSessions.find((item) => item.id === sessionId),
+        date = $("#agenda-session-date").value,
+        time = $("#agenda-session-time").value,
+        patient = state.patients.find((item) => item.id === session?.patientId);
+      if (!session || !patient || !date || !time) return;
+      const edits = { attendance: $("#agenda-session-attendance").value, paid: $("#agenda-session-paid").checked, amount: Math.max(0, Number($("#agenda-session-amount").value || 0)) },
+        samePatientDuplicate = state.clinicSessions.some((item) => !item.deleted && !item.placeholder && item.attendance !== "rescheduled" && item.id !== session.id && item.patientId === session.patientId && item.date === date && (item.time || patient.time || "") === time);
+      if (samePatientDuplicate) {
+        toast("Este paciente já tem uma sessão nesse dia e horário.");
+        return;
+      }
+      const conflicts = state.clinicSessions.filter((item) => {
+        if (item.deleted || item.id === session.id || item.patientId === session.patientId || item.attendance === "rescheduled" || item.date !== date) return false;
+        const otherPatient = state.patients.find((candidate) => candidate.id === item.patientId);
+        return (item.time || otherPatient?.time || "") === time;
+      });
+      if (conflicts.length) {
+        const names = [...new Set(conflicts.map((item) => state.patients.find((candidate) => candidate.id === item.patientId)?.name || "Outro paciente"))];
+        state.pendingSessionChange = { sessionId: session.id, date, time, edits };
+        $("#session-conflict-copy").textContent = `Já há sessão de ${names.join(", ")} em ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${date}T12:00:00`))} às ${time}. Você pode voltar e escolher outro horário ou salvar mesmo assim.`;
+        closeAgendaSessionPopover();
+        openModal("session-conflict-modal");
+        return;
+      }
+      session.date = date;
+      session.time = time;
+      session.month = date.slice(0, 7);
+      session.scheduledDate ||= date;
+      Object.assign(session, edits);
+      closeAgendaSessionPopover();
+      await saveData("Sessão atualizada.");
     });
     bindPeriodWidget();
     document.querySelectorAll("[data-theme-choice]").forEach((button) => {

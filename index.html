@@ -381,7 +381,7 @@
             </div>
             <div class="table-wrap">
               <table class="patients-table">
-                <thead><tr><th>PACIENTE</th><th>TELEFONE</th><th>FREQUÊNCIA</th><th>SESSÕES</th><th>VALOR / TOTAL</th><th>PRESENÇA</th><th>PAGO</th></tr></thead>
+                <thead><tr><th>PACIENTE</th><th>TELEFONE</th><th>FREQUÊNCIA</th><th>SESSÕES</th><th>VALOR / TOTAL</th><th>PRESENÇA</th><th>RECEBIDO / A RECEBER</th></tr></thead>
                 <tbody id="patient-list"></tbody>
               </table>
               <div class="empty-state" id="patients-empty"><div class="empty-icon">✳</div><strong id="patients-empty-title">Nenhum paciente cadastrado</strong><span id="patients-empty-copy">Cadastre um paciente para acompanhar sessões, pagamentos e frequência.</span><button class="text-button" id="empty-patient-add">＋ Novo paciente</button></div>
@@ -412,6 +412,15 @@
             <div class="calendar-mobile-day" id="agenda-mobile-day"></div>
             <div class="calendar-legend"><span><i class="calendar-legend-dot"></i> Sessão</span><span>Os horários refletem as sessões cadastradas em Pacientes e sessões.</span></div>
           </article>
+          <section class="agenda-session-popover" id="agenda-session-popover" role="dialog" aria-modal="false" aria-labelledby="agenda-session-title" hidden>
+            <div class="agenda-popover-heading"><div><span class="eyebrow">SESSÃO</span><h2 id="agenda-session-title"></h2></div><button class="close-button" id="agenda-session-close" type="button" aria-label="Fechar edição">×</button></div>
+            <form id="agenda-session-form">
+              <div class="field-row"><label class="field-label">Data<input id="agenda-session-date" type="date" required /></label><label class="field-label">Horário<input id="agenda-session-time" type="time" required /></label></div>
+              <label class="field-label">Presença<select id="agenda-session-attendance"><option value="pending">A confirmar</option><option value="attended">Compareceu</option><option value="missed">Faltou</option></select></label>
+              <div class="agenda-popover-payment"><label class="field-label">Valor da sessão (R$)<input id="agenda-session-amount" type="number" min="0" step="0.01" required /></label><label class="agenda-popover-paid"><input id="agenda-session-paid" type="checkbox" /> Pago</label></div>
+              <div class="agenda-popover-actions"><button class="agenda-reschedule-button" id="agenda-session-reschedule" type="button">Remarcar</button><button class="primary-button" type="submit">Salvar</button></div>
+            </form>
+          </section>
         </section>
 
         <footer class="page-footer">
