@@ -3006,6 +3006,7 @@ td {
   color: #2d493c;
 }
 .patients-footer .patients-receivable-total { color: #3c7355; }
+.patients-footer .patients-grand-total { color: var(--brand-deep); }
 .receivable-amount { color: #3c7355; font-weight: 700; }
 .expense-details-field {
   display: block;
@@ -3948,6 +3949,52 @@ td {
 .patients-panel.cards-view .patients-table td > strong { display: block; font-size: 17px; line-height: 1.35; }
 .patients-panel.cards-view .schedule-sub,
 .patients-panel.cards-view .sessions-sub { margin-top: 3px; font-size: 13px; line-height: 1.4; white-space: normal; }
+
+@media (min-width: 601px) {
+  .patients-panel:not(.cards-view) .table-wrap {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .patients-panel:not(.cards-view) .patients-table {
+    width: 100%;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+  .patients-panel:not(.cards-view) .patients-table th {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .patients-panel:not(.cards-view) .patient-name-cell { min-width: 0; }
+  .patients-panel:not(.cards-view) .patients-table th:nth-child(6),
+  .patients-panel:not(.cards-view) .patients-table td:nth-child(6) { width: 38%; }
+  .patients-panel:not(.cards-view) .patients-table th:nth-child(7),
+  .patients-panel:not(.cards-view) .patients-table td:nth-child(7) { width: 13%; }
+  .patients-panel:not(.cards-view) .receivable-amount {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .patients-panel:not(.cards-view) .session-line {
+    grid-template-columns: minmax(110px, 1.4fr) 62px minmax(86px, 1fr) 56px minmax(58px, .72fr) 30px;
+    gap: 5px;
+    padding: 6px;
+  }
+  .patients-panel:not(.cards-view) .session-kind-placeholder { width: 62px; }
+  .patients-panel:not(.cards-view) .session-datetime,
+  .patients-panel:not(.cards-view) .session-line select,
+  .patients-panel:not(.cards-view) .session-amount {
+    width: 100%;
+    min-width: 0;
+    padding-right: 5px;
+    padding-left: 5px;
+  }
+  .patients-panel:not(.cards-view) .session-paid {
+    width: auto;
+    min-width: 0;
+    gap: 4px;
+    font-size: 12px;
+  }
+  .patients-panel:not(.cards-view) .session-paid input { flex: 0 0 auto; }
+}
 .patients-panel.cards-view .frequency-badge { margin-bottom: 3px; font-size: 13px; }
 .patients-panel.cards-view .session-accordion { border: 0; border-radius: 0; background: transparent; }
 .patients-panel.cards-view .session-accordion > summary {

@@ -776,6 +776,7 @@
       visibleSessions = (overdueOnly ? overdueSessions : sessions).filter((session) => visiblePatientIds.has(session.patientId) && !session.placeholder && session.attendance !== "rescheduled"),
       paidTotal = (overdueOnly ? overdueSessions : sessions).filter((session) => visiblePatientIds.has(session.patientId) && session.paid && session.attendance !== "rescheduled").reduce((sum, session) => sum + Number(session.amount || 0), 0),
       receivableTotal = visibleSessions.filter((session) => !session.paid && session.attendance !== "missed").reduce((sum, session) => sum + Number(session.amount || 0), 0),
+      totalExpected = paidTotal + receivableTotal,
       overdueTotal = visibleSessions.reduce((sum, session) => sum + Number(session.amount || 0), 0),
       seenCount = visibleSessions.filter((session) => session.attendance === "attended").length;
     $("#patients-month").textContent = monthLabel(state.activeMonth).toLocaleLowerCase("pt-BR");
@@ -829,7 +830,7 @@
       : "Tente alterar ou limpar os filtros para ver pacientes.";
     $("#empty-patient-add").hidden = !noPatients;
     $("#patient-list").closest(".table-wrap").querySelector("table").style.display = visiblePatients.length ? "" : "none";
-    $("#patients-totals").innerHTML = `<span>${visiblePatients.length} de ${patients.length} ${patients.length === 1 ? "paciente" : "pacientes"}</span><span>${overdueOnly ? `${visibleSessions.length} sessões vencidas` : `${visibleSessions.length} sessões previstas · ${seenCount} realizadas`}</span>${overdueOnly ? `<strong>${money(overdueTotal)} em aberto</strong>` : `<strong>${money(paidTotal)} recebidos</strong><strong class="patients-receivable-total">${money(receivableTotal)} a receber</strong>`}`;
+    $("#patients-totals").innerHTML = `<span>${visiblePatients.length} de ${patients.length} ${patients.length === 1 ? "paciente" : "pacientes"}</span><span>${overdueOnly ? `${visibleSessions.length} sessões vencidas` : `${visibleSessions.length} sessões previstas · ${seenCount} realizadas`}</span>${overdueOnly ? `<strong>${money(overdueTotal)} em aberto</strong>` : `<strong>${money(paidTotal)} recebidos</strong><strong class="patients-receivable-total">${money(receivableTotal)} a receber</strong><strong class="patients-grand-total">${money(totalExpected)} total do mês</strong>`}`;
   }
   function render() {
     ensureClinicSessions(state.activeMonth);
