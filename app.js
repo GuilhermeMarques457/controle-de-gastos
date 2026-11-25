@@ -460,6 +460,43 @@
   const POT_LABELS = { accounts: "Contas", wishes: "Desejos", future: "Futuro" };
   const FREQUENCIES = { weekly: "Semanal", biweekly: "Quinzenal", monthly: "Mensal" };
   const WEEKDAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  const WEEKDAY_OPTIONS = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+  const WEEKDAY_SHORT = ["Dom.", "Seg.", "Ter.", "Qua.", "Qui.", "Sex.", "Sáb."];
+  const MONTH_WEEK_LABELS = { first: "1ª", second: "2ª", third: "3ª", fourth: "4ª", last: "Última" };
+  function patientSchedules(patient) {
+    const source = Array.isArray(patient.schedules)
+      ? patient.schedules
+      : patient.weekday !== undefined || patient.time
+        ? [{ weekday: patient.weekday, time: patient.time }]
+        : [];
+    return source.map((schedule) => ({ weekday: schedule.weekday === undefined || schedule.weekday === null || schedule.weekday === "" ? null : Number(schedule.weekday), day: schedule.day === undefined || schedule.day === null || schedule.day === "" ? null : Number(schedule.day), weekOfMonth: schedule.weekOfMonth || null, time: String(schedule.time || "").slice(0, 5) }))
+      .filter((schedule) => ((schedule.weekday !== null && schedule.weekday >= 0 && schedule.weekday <= 6) || (schedule.day !== null && schedule.day >= 1 && schedule.day <= 31)) && /^\d{2}:\d{2}$/.test(schedule.time));
+  }
+  function scheduleId(schedule) {
+    if (schedule.weekOfMonth) return `${schedule.weekOfMonth}-${schedule.weekday}`;
+    return String(schedule.day ?? schedule.weekday);
+  }
+  function monthlyRuleFromLegacyDay(day, referenceDate) {
+    const [year, month] = (referenceDate || dateKey(new Date())).split("-").map(Number),
+      monthEnd = new Date(year, month, 0, 12),
+      selectedDay = Math.min(Math.max(1, Number(day) || 1), monthEnd.getDate()),
+      selectedDate = new Date(year, month - 1, selectedDay, 12),
+      occurrence = Math.floor((selectedDay - 1) / 7) + 1,
+      isLast = selectedDay + 7 > monthEnd.getDate();
+    return { weekday: selectedDate.getDay(), weekOfMonth: isLast ? "last" : ["first", "second", "third", "fourth"][occurrence - 1] || "last" };
+  }
+  function monthlyWeekdayDate(year, month, weekday, weekOfMonth) {
+    const first = new Date(year, month - 1, 1, 12),
+      last = new Date(year, month, 0, 12),
+      weekNumber = { first: 1, second: 2, third: 3, fourth: 4 }[weekOfMonth] || Number(weekOfMonth) || 1;
+    if (weekOfMonth === "last") {
+      last.setDate(last.getDate() - ((last.getDay() - weekday + 7) % 7));
+      return last;
+    }
+    const date = new Date(first);
+    date.setDate(1 + ((weekday - first.getDay() + 7) % 7) + (weekNumber - 1) * 7);
+    return date;
+  }
   const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   function agendaWeekDates(reference = new Date()) {
     const monday = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate(), 12);
@@ -640,36 +677,71 @@
     const [year, month] = ym.split("-").map(Number);
     const monthStart = new Date(year, month - 1, 1, 12),
       monthEnd = new Date(year, month, 0, 12),
-      start = new Date(`${patient.startDate}T12:00:00`),
-      dates = [];
-    if (!patient.startDate || start > monthEnd) return dates;
-    if (patient.frequency === "monthly") {
-      const day = Math.min(start.getDate(), monthEnd.getDate());
-      const date = new Date(year, month - 1, day, 12);
-      if (date >= monthStart && date >= start) dates.push(date.toISOString().slice(0, 10));
-      return dates;
-    }
-    const interval = patient.frequency === "biweekly" ? 14 : 7,
-      weekday = Number.isInteger(Number(patient.weekday)) ? Number(patient.weekday) : start.getDay();
-    let date = new Date(start);
-    date.setDate(date.getDate() + ((weekday - date.getDay() + 7) % 7));
-    while (date < monthStart) date.setDate(date.getDate() + interval);
-    while (date <= monthEnd) {
-      dates.push(date.toISOString().slice(0, 10));
-      date.setDate(date.getDate() + interval);
+      storedStart = patient.startDate || dateKey(new Date()),
+      effectiveFrom = patient.scheduleModel === "v2" && storedStart.slice(0, 7) === ym ? `${ym}-01` : storedStart,
+      start = new Date(`${effectiveFrom}T12:00:00`),
+      dates = [], schedules = patientSchedules(patient),
+      modernSchedule = patient.scheduleModel === "v2";
+    if (start > monthEnd) return dates;
+    if (!schedules.length) schedules.push({ weekday: start.getDay(), day: start.getDate(), time: patient.time || "" });
+    for (const schedule of schedules) {
+      if (patient.frequency === "monthly") {
+        const date = modernSchedule && schedule.weekOfMonth && schedule.weekday !== null
+          ? monthlyWeekdayDate(year, month, schedule.weekday, schedule.weekOfMonth)
+          : new Date(year, month - 1, Math.min(modernSchedule ? schedule.day || start.getDate() : start.getDate(), monthEnd.getDate()), 12);
+        if (date >= monthStart && date >= start) dates.push({ date: dateKey(date), time: schedule.time, scheduleId: scheduleId(schedule) });
+        continue;
+      }
+      const weekday = schedule.weekday ?? start.getDay();
+      if (modernSchedule && patient.frequency === "biweekly") {
+        let date = new Date(start);
+        date.setDate(date.getDate() + ((weekday - date.getDay() + 7) % 7));
+        const occurrence = Math.floor((date.getDate() - 1) / 7) + 1,
+          wantsEvenWeek = patient.biweeklyPattern === "second-fourth",
+          isEvenWeek = occurrence % 2 === 0;
+        if (wantsEvenWeek !== isEvenWeek) date.setDate(date.getDate() + 7);
+        while (date < monthStart) date.setDate(date.getDate() + 14);
+        while (date <= monthEnd) {
+          if (date >= start) dates.push({ date: dateKey(date), time: schedule.time, scheduleId: scheduleId(schedule) });
+          date.setDate(date.getDate() + 14);
+        }
+        continue;
+      }
+      const interval = patient.frequency === "biweekly" ? 14 : 7;
+      let date = new Date(start);
+      date.setDate(date.getDate() + ((weekday - date.getDay() + 7) % 7));
+      while (date < monthStart) date.setDate(date.getDate() + interval);
+      while (date <= monthEnd) {
+        dates.push({ date: dateKey(date), time: schedule.time, scheduleId: scheduleId(schedule) });
+        date.setDate(date.getDate() + interval);
+      }
     }
     return dates;
   }
   function ensureClinicSessions(ym) {
     const regularOccurrences = new Map(),
       extraSessions = [];
+    let changed = false;
     for (const session of state.clinicSessions) {
       if (session.kind === "extra" || session.kind === "emergency" || session.rescheduledFromId) {
         extraSessions.push(session);
         continue;
       }
+      if (!session.scheduleId) {
+        const patient = state.patients.find((item) => item.id === session.patientId),
+          scheduledDate = session.scheduledDate || session.originalDate || session.date,
+          weekday = scheduledDate ? new Date(`${scheduledDate}T12:00:00`).getDay() : -1,
+          patientSlots = patientSchedules(patient || {}),
+          candidates = patientSlots.filter((slot) => slot.weekday === weekday),
+          sessionTime = (session.time || patient?.time || "").slice(0, 5),
+          matched = (patient?.frequency === "monthly" ? patientSlots.find((slot) => slot.time === sessionTime) : null) || candidates.find((slot) => slot.time === sessionTime) || (candidates.length === 1 ? candidates[0] : patient?.frequency === "monthly" && patientSlots.length === 1 ? patientSlots[0] : null);
+        if (matched) {
+          session.scheduleId = scheduleId(matched);
+          changed = true;
+        }
+      }
       const scheduledDate = session.scheduledDate || session.originalDate || session.date,
-        key = `${session.patientId}|${scheduledDate}`,
+        key = `${session.patientId}|${scheduledDate}|${session.scheduleId || session.time || ""}`,
         previous = regularOccurrences.get(key);
       if (!previous) regularOccurrences.set(key, session);
       else {
@@ -679,15 +751,23 @@
       }
     }
     const cleaned = [...regularOccurrences.values(), ...extraSessions];
-    let changed = cleaned.length !== state.clinicSessions.length;
+    changed ||= cleaned.length !== state.clinicSessions.length;
     if (changed) state.clinicSessions = cleaned;
-    const existing = new Set(state.clinicSessions.map((session) => `${session.patientId}|${session.scheduledDate || session.originalDate || session.date}`));
+    const existing = new Set();
+    state.clinicSessions.forEach((session) => {
+      const date = session.scheduledDate || session.originalDate || session.date;
+      existing.add(`${session.patientId}|${date}|${session.scheduleId || session.time || ""}`);
+      if (session.time) existing.add(`${session.patientId}|${date}|${session.time}`);
+    });
     for (const patient of state.patients) {
-      for (const date of monthSessionDates(patient, ym)) {
-        const key = `${patient.id}|${date}`;
-        if (existing.has(key)) continue;
-        state.clinicSessions.push({ id: uid(), patientId: patient.id, date, scheduledDate: date, month: ym, time: patient.time || "", amount: Number(patient.price || 0), kind: "regular", attendance: "pending", paid: false });
+      for (const occurrence of monthSessionDates(patient, ym)) {
+        const { date, time, scheduleId: occurrenceScheduleId } = occurrence,
+          key = `${patient.id}|${date}|${occurrenceScheduleId || time}`,
+          timeKey = `${patient.id}|${date}|${time}`;
+        if (existing.has(key) || existing.has(timeKey)) continue;
+        state.clinicSessions.push({ id: uid(), patientId: patient.id, date, scheduledDate: date, scheduleId: occurrenceScheduleId, month: ym, time: time || patient.time || "", amount: Number(patient.price || 0), kind: "regular", attendance: "pending", paid: false });
         existing.add(key);
+        if (time) existing.add(timeKey);
         changed = true;
       }
     }
@@ -790,15 +870,8 @@
           ...visits.filter((item) => item.placeholder && item.rescheduledFromId === session.id),
         ]),
         total = activeVisits.reduce((sum, session) => sum + Number(session.amount || 0), 0),
-        scheduleWeekday = Number.isInteger(Number(patient.weekday)) && patient.weekday !== ""
-          ? Number(patient.weekday)
-          : patient.startDate
-            ? new Date(`${patient.startDate}T12:00:00`).getDay()
-            : visits[0]
-              ? new Date(`${visits[0].date}T12:00:00`).getDay()
-              : null,
-        scheduleTime = patient.time || visits.find((session) => session.time)?.time || "",
-        scheduleLabel = `${scheduleWeekday === null ? "Dia a definir" : WEEKDAYS[scheduleWeekday]}${scheduleTime ? ` · ${scheduleTime}` : ""}`,
+        scheduleSlots = patientSchedules(patient),
+        scheduleLabel = scheduleSlots.length ? scheduleSlots.map((slot) => patient.frequency === "monthly" ? `${MONTH_WEEK_LABELS[slot.weekOfMonth] || "Última"} ${WEEKDAY_SHORT[slot.weekday] || "—"} · ${slot.time}` : `${WEEKDAY_SHORT[slot.weekday] || "Dia —"} · ${slot.time}`).join(" / ") : "Dia e horário a definir",
         visitControls = displayVisits.map((session) => {
           const overdue = sessionIsOverdue(session, patient),
             extra = session.kind === "extra" || session.kind === "emergency",
@@ -1137,9 +1210,22 @@
     $("#patient-phone").value = formatBrazilianPhone(patient?.phone || "");
     $("#patient-frequency").value = patient?.frequency || "weekly";
     $("#patient-payment-frequency").value = patient?.paymentFrequency || "monthly";
-    $("#patient-start").value = patient?.startDate || `${state.activeMonth}-01`;
-    $("#patient-weekday").value = patient?.weekday ?? new Date(`${patient?.startDate || `${state.activeMonth}-01`}T12:00:00`).getDay();
-    $("#patient-time").value = patient?.time || "";
+    const frequency = $("#patient-frequency").value,
+      today = dateKey(new Date()),
+      oldSchedules = patientSchedules(patient || {}),
+      defaultWeekday = patient?.weekday ?? new Date(`${patient?.startDate || today}T12:00:00`).getDay(),
+      defaultMonthlyDay = Number(patient?.monthlyDay || patient?.startDate?.slice(8, 10)) || Number(today.slice(8, 10)),
+      schedules = oldSchedules.length
+        ? oldSchedules.map((schedule) => frequency === "monthly"
+          ? schedule.weekOfMonth && schedule.weekday !== null
+            ? { weekday: schedule.weekday, weekOfMonth: schedule.weekOfMonth, time: schedule.time }
+            : { ...monthlyRuleFromLegacyDay(schedule.day ?? defaultMonthlyDay, patient?.startDate || today), time: schedule.time }
+          : { weekday: schedule.weekday ?? defaultWeekday, time: schedule.time })
+        : [frequency === "monthly" ? { ...monthlyRuleFromLegacyDay(Number(today.slice(8, 10)), today), time: patient?.time || "" } : { weekday: defaultWeekday, time: patient?.time || "" }];
+    const legacyBiweeklyDate = patient?.startDate ? Number(patient.startDate.slice(8, 10)) : 1,
+      legacyPattern = legacyBiweeklyDate <= 7 || (legacyBiweeklyDate > 14 && legacyBiweeklyDate <= 21) ? "first-third" : "second-fourth";
+    renderPatientRecurrenceOptions(frequency, patient?.biweeklyPattern || legacyPattern);
+    renderPatientScheduleFields(schedules, frequency);
     $("#patient-price").value = patient?.price ?? "";
     $("#patient-time-conflict").hidden = true;
     state.pendingPatientSave = null;
@@ -1147,17 +1233,49 @@
     $("#delete-patient-action").hidden = !patient;
     openModal("patient-modal");
   }
+  function renderPatientRecurrenceOptions(frequency, biweeklyPattern = "first-third") {
+    const options = $("#patient-recurrence-options");
+    options.dataset.biweeklyPattern = biweeklyPattern;
+    if (frequency === "biweekly") {
+      options.innerHTML = `<label class="field-label">Quais semanas do mês?<select id="patient-biweekly-pattern"><option value="first-third" ${biweeklyPattern === "first-third" ? "selected" : ""}>1ª e 3ª semanas</option><option value="second-fourth" ${biweeklyPattern === "second-fourth" ? "selected" : ""}>2ª e 4ª semanas</option></select><small class="field-hint">As sessões quinzenais são geradas desde o início do mês conforme esse padrão.</small></label>`;
+    } else if (frequency === "monthly") {
+      options.innerHTML = `<p class="field-hint recurrence-hint">Escolha a semana, o dia da semana e o horário. Ex.: última quarta-feira ou primeira terça-feira do mês.</p>`;
+    } else options.innerHTML = "";
+  }
+  function renderPatientScheduleFields(schedules, frequency) {
+    const container = $("#patient-schedules");
+    const isMonthly = frequency === "monthly";
+    $(".patient-schedule-columns").classList.toggle("monthly", isMonthly);
+    $("#patient-schedule-heading").textContent = isMonthly ? "Regras mensais" : "Dias fixos da semana";
+    $("#patient-schedule-day-label").textContent = isMonthly ? "Semana" : "Dia da semana";
+    $("#patient-schedule-weekday-label").hidden = !isMonthly;
+    $("#add-patient-schedule").textContent = isMonthly ? "＋ Adicionar regra mensal" : "＋ Adicionar horário";
+    container.innerHTML = schedules.map((schedule) => `<div class="patient-schedule-row${isMonthly ? " monthly" : ""}">${isMonthly ? `<select data-schedule-week aria-label="Semana do mês">${[["first", "1ª"], ["second", "2ª"], ["third", "3ª"], ["fourth", "4ª"], ["last", "Última"]].map(([value, label]) => `<option value="${value}" ${schedule.weekOfMonth === value ? "selected" : ""}>${label}</option>`).join("")}</select>` : ""}<select data-schedule-weekday aria-label="Dia da semana">${WEEKDAY_OPTIONS.map((day, weekday) => `<option value="${weekday}" ${Number(schedule.weekday) === weekday ? "selected" : ""}>${day}</option>`).join("")}</select><input data-schedule-time type="time" value="${escapeHtml(schedule.time || "")}" aria-label="Horário da sessão" required /><button class="remove-patient-schedule" type="button" aria-label="Remover este horário" title="Remover horário">×</button></div>`).join("");
+    const removeButtons = [...container.querySelectorAll(".remove-patient-schedule")];
+    removeButtons.forEach((button) => { button.hidden = removeButtons.length === 1; });
+  }
+  function readPatientScheduleFields() {
+    return [...$("#patient-schedules").querySelectorAll(".patient-schedule-row")].map((row) => ({ weekday: Number(row.querySelector("[data-schedule-weekday]").value), weekOfMonth: row.querySelector("[data-schedule-week]")?.value || null, time: row.querySelector("[data-schedule-time]").value }));
+  }
   async function savePatientRecord(patient) {
     const id = patient.id,
-      previousPatient = state.patients.find((item) => item.id === id);
+      previousPatient = state.patients.find((item) => item.id === id),
+      previousSchedules = patientSchedules(previousPatient || {}).map((schedule) => `${scheduleId(schedule)}-${schedule.time}`).sort().join("|"),
+      nextSchedules = patientSchedules(patient).map((schedule) => `${scheduleId(schedule)}-${schedule.time}`).sort().join("|"),
+      scheduleChanged = previousPatient && (previousPatient.frequency !== patient.frequency || previousPatient.startDate !== patient.startDate || previousPatient.scheduleModel !== patient.scheduleModel || previousPatient.biweeklyPattern !== patient.biweeklyPattern || previousPatient.monthlyDay !== patient.monthlyDay || previousSchedules !== nextSchedules);
+    if (previousPatient?.frequency === "monthly" && previousPatient.scheduleModel !== "v2") {
+      const legacyMonthlyDay = String(Number(previousPatient.startDate?.slice(8, 10)) || 1);
+      state.clinicSessions.forEach((session) => { if (session.patientId === id && session.kind !== "extra" && session.kind !== "emergency" && !session.rescheduledFromId) session.scheduleId = legacyMonthlyDay; });
+    }
     state.patients = state.patients.some((item) => item.id === id) ? state.patients.map((item) => item.id === id ? patient : item) : [...state.patients, patient];
-    if (previousPatient && (previousPatient.frequency !== patient.frequency || previousPatient.startDate !== patient.startDate)) {
-      state.clinicSessions = state.clinicSessions.filter((session) => session.patientId !== id || session.date < state.activeMonth + "-01" || session.paid || session.attendance !== "pending");
+    if (scheduleChanged) {
+      state.clinicSessions = state.clinicSessions.filter((session) => session.patientId !== id || session.kind === "extra" || session.kind === "emergency" || session.rescheduledFromId || (session.date || session.scheduledDate) < patient.startDate || session.paid || session.attendance !== "pending");
     } else if (previousPatient && previousPatient.price !== patient.price) {
       for (const session of state.clinicSessions) {
         if (session.patientId === id && session.date >= state.activeMonth + "-01" && !session.paid && session.attendance === "pending") session.amount = patient.price;
       }
     }
+    ensureClinicSessions(localMonth());
     state.pendingPatientSave = null;
     $("#patient-time-conflict").hidden = true;
     closeModal("patient-modal");
@@ -1340,14 +1458,61 @@
       $("#overdue-only-filter").checked = false;
       renderClinic();
     });
+    $("#add-patient-schedule").addEventListener("click", () => {
+      const schedules = readPatientScheduleFields(),
+        last = schedules[schedules.length - 1] || { weekday: 0, weekOfMonth: "first", time: "" },
+        frequency = $("#patient-frequency").value,
+        nextSchedule = frequency === "monthly"
+          ? { weekOfMonth: ({ first: "second", second: "third", third: "fourth", fourth: "last", last: "first" })[last.weekOfMonth] || "first", weekday: last.weekday, time: last.time }
+          : { weekday: ((last.weekday ?? new Date().getDay()) + 1) % 7, time: last.time };
+      renderPatientScheduleFields([...schedules, nextSchedule], frequency);
+    });
+    $("#patient-frequency").addEventListener("change", (event) => {
+      const frequency = event.currentTarget.value,
+        currentSchedules = readPatientScheduleFields(),
+        today = dateKey(new Date()),
+        defaultWeekday = new Date(`${today}T12:00:00`).getDay(),
+        schedules = currentSchedules.map((schedule) => frequency === "monthly"
+          ? { weekday: schedule.weekday ?? defaultWeekday, weekOfMonth: schedule.weekOfMonth || "first", time: schedule.time }
+          : { weekday: schedule.weekday ?? defaultWeekday, time: schedule.time }),
+        pattern = $("#patient-biweekly-pattern")?.value || $("#patient-recurrence-options").dataset.biweeklyPattern || "first-third";
+      renderPatientRecurrenceOptions(frequency, pattern);
+      renderPatientScheduleFields(schedules, frequency);
+    });
+    $("#patient-schedules").addEventListener("click", (event) => {
+      const remove = event.target.closest(".remove-patient-schedule");
+      if (!remove || $("#patient-schedules").querySelectorAll(".patient-schedule-row").length <= 1) return;
+      remove.closest(".patient-schedule-row").remove();
+      const buttons = [...$("#patient-schedules").querySelectorAll(".remove-patient-schedule")];
+      buttons.forEach((button) => { button.hidden = buttons.length === 1; });
+    });
     $("#patient-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const id = $("#patient-id").value || uid(),
-        patient = { id, name: $("#patient-name").value.trim(), phone: $("#patient-phone").value.trim(), frequency: $("#patient-frequency").value, paymentFrequency: $("#patient-payment-frequency").value, startDate: $("#patient-start").value, weekday: Number($("#patient-weekday").value), time: $("#patient-time").value, price: Number($("#patient-price").value) },
-        conflicts = state.patients.filter((item) => item.id !== id && Number(item.weekday) === patient.weekday && item.time && item.time === patient.time);
+        schedules = readPatientScheduleFields(),
+        scheduleKeys = schedules.map((schedule) => scheduleId(schedule));
+      if (new Set(scheduleKeys).size !== scheduleKeys.length) {
+        toast("Escolha apenas um horário fixo por dia para este paciente.");
+        return;
+      }
+      const primarySchedule = schedules[0],
+        frequency = $("#patient-frequency").value,
+        today = dateKey(new Date()),
+        biweeklyPattern = $("#patient-biweekly-pattern")?.value || $("#patient-recurrence-options").dataset.biweeklyPattern || "first-third",
+        previousPatient = state.patients.find((item) => item.id === id),
+        scheduleSignature = schedules.map((schedule) => `${scheduleId(schedule)}-${schedule.time}`).sort().join("|"),
+        previousSignature = patientSchedules(previousPatient || {}).map((schedule) => `${scheduleId(schedule)}-${schedule.time}`).sort().join("|"),
+        recurrenceChanged = previousPatient && (previousPatient.scheduleModel !== "v2" || previousPatient.frequency !== frequency || previousPatient.biweeklyPattern !== biweeklyPattern || previousSignature !== scheduleSignature),
+        currentMonthStart = `${today.slice(0, 7)}-01`,
+        effectiveStartDate = previousPatient?.scheduleModel === "v2" && !recurrenceChanged
+          ? previousPatient.startDate?.slice(0, 7) === today.slice(0, 7) ? currentMonthStart : previousPatient.startDate || currentMonthStart
+          : currentMonthStart,
+        patient = { id, name: $("#patient-name").value.trim(), phone: $("#patient-phone").value.trim(), frequency, paymentFrequency: $("#patient-payment-frequency").value, startDate: effectiveStartDate, scheduleModel: "v2", biweeklyPattern, monthlyDay: primarySchedule.day || null, schedules, weekday: primarySchedule.weekday ?? new Date(`${today}T12:00:00`).getDay(), time: primarySchedule.time, price: Number($("#patient-price").value) },
+        proposedOccurrences = monthSessionDates(patient, state.activeMonth),
+        conflicts = state.patients.filter((item) => item.id !== id && monthSessionDates(item, state.activeMonth).some((other) => proposedOccurrences.some((proposed) => proposed.date === other.date && proposed.time === other.time)));
       if (conflicts.length) {
         state.pendingPatientSave = patient;
-        $("#patient-time-conflict-copy").textContent = `Já existe atendimento neste dia e horário com ${conflicts.map((item) => item.name).join(", ")}. Você pode salvar mesmo assim ou voltar e escolher outro horário.`;
+        $("#patient-time-conflict-copy").textContent = `Já existe atendimento no mesmo dia e horário com ${conflicts.map((item) => item.name).join(", ")} neste mês. Você pode salvar mesmo assim ou voltar e ajustar os horários.`;
         $("#patient-time-conflict").hidden = false;
         return;
       }

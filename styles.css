@@ -2895,6 +2895,44 @@ td {
   border-radius: 10px;
   background: #fff8e8;
 }
+.patient-schedule-block { display: grid; gap: 7px; margin: 4px 0 13px; }
+.patient-schedule-block > strong { color: #40574a; font-size: 14px; }
+.patient-schedule-columns,
+.patient-schedule-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(92px, 112px) 34px; gap: 6px; align-items: center; }
+.patient-schedule-columns.monthly,
+.patient-schedule-row.monthly { grid-template-columns: minmax(72px, .75fr) minmax(0, 1.1fr) minmax(92px, 112px) 34px; }
+.patient-schedule-columns { color: #89928e; font-size: 11px; font-weight: 600; }
+.patient-schedules { display: grid; gap: 7px; }
+.patient-recurrence-options:empty { display: none; }
+.patient-recurrence-options { margin: 9px 0; }
+.patient-recurrence-options .field-label { margin-bottom: 0; }
+.recurrence-hint { margin: 0; }
+.patient-schedule-row select,
+.patient-schedule-row input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px;
+  border: 1px solid #e6e9e2;
+  border-radius: 8px;
+  color: #34483d;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+}
+.remove-patient-schedule {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  color: #a65349;
+  background: #faece8;
+  font-size: 20px;
+  cursor: pointer;
+}
+.remove-patient-schedule[hidden] { display: none; }
+.add-patient-schedule { justify-self: start; min-height: 28px; padding: 3px 0; font-size: 12px; }
 .patient-conflict-warning p {
   margin: 0 0 12px;
   color: #765d24;
@@ -3965,6 +4003,7 @@ td {
     overflow-wrap: anywhere;
   }
   .patients-panel:not(.cards-view) .patient-name-cell { min-width: 0; }
+  .patients-panel:not(.cards-view) .schedule-sub { white-space: normal; overflow-wrap: anywhere; }
   .patients-panel:not(.cards-view) .patients-table th:nth-child(6),
   .patients-panel:not(.cards-view) .patients-table td:nth-child(6) { width: 38%; }
   .patients-panel:not(.cards-view) .patients-table th:nth-child(7),
